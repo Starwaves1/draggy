@@ -30,6 +30,7 @@ use crate::AppState;
 use crate::ipc::providers::account::claude_chat::{self, ClaudeChat};
 use crate::ipc::providers::account::codex_chat::{self as codex_chat_runtime, CodexChat};
 use crate::ipc::providers::adapters::{AppHttp, AppKeys, AppKv};
+use crate::platform::window;
 
 const GATEWAY_URL: &str = "draggy-ai://chat";
 const UNKNOWN_URL: &str = "draggy-ai://unknown";
@@ -42,8 +43,6 @@ const TEMPLATE_ROUTE: &str = "/apply-template";
 const TEMPLATE_URL: &str = "draggy-ai://apply-template";
 const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 const QUEUE: usize = 32;
-// The main window is served from the asset scheme, so its origin is tauri.localhost, not draggy.localhost.
-const RENDERER_ORIGIN: &str = "http://tauri.localhost";
 const DEV_ORIGIN: &str = "http://127.0.0.1:5173";
 const DEFAULT_ENGINE_PORT: u16 = 11435;
 const DRAGGY_AI_SOURCES: [&str; 2] = ["draggy-ai:", "http://draggy-ai.localhost"];
@@ -369,7 +368,7 @@ pub fn production_serve(app: AppHandle) -> Serve {
 
 /// Whether a request comes from the app's own pages, or the dev server in debug builds.
 fn renderer_origin(origin: &str) -> bool {
-    origin == RENDERER_ORIGIN || (cfg!(debug_assertions) && origin == DEV_ORIGIN)
+    origin == window::PAGE_ORIGIN || (cfg!(debug_assertions) && origin == DEV_ORIGIN)
 }
 
 /// The renderer's connect-src with the draggy-ai entries replaced by the gateway's origin and nothing else.
