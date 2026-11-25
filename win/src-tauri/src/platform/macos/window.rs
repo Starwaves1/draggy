@@ -4,6 +4,9 @@ use serde_json::json;
 use tauri::webview::WebviewWindowBuilder;
 use tauri::{Manager, Runtime, TitleBarStyle, WebviewWindow};
 
+/// WKWebView serves the app's pages from the asset scheme as tauri://localhost, which is their origin.
+pub const PAGE_ORIGIN: &str = "tauri://localhost";
+
 /// The system's traffic lights over the page's own 40px title bar, which runs under a hidden native one.
 pub fn main_chrome<'a, R: Runtime, M: Manager<R>>(
     builder: WebviewWindowBuilder<'a, R, M>,
