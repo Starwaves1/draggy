@@ -291,3 +291,36 @@ describe("Run in terminal on macOS", () => {
     expect(shell.open).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Run in terminal on macOS reuses its tab", () => {
+  beforeEach(() => {
+    window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command", pasteMode: "reported" };
+  });
+
+  it("opens one shell for repeated clicks on bash, sh and zsh blocks", async () => {
+    opensAs.push("/bin/zsh");
+    render(<Harness />);
+    act(() => requestPrefill({ command: "echo a\necho b", shell: "bash" }));
+    await waitFor(() => expect(views).toHaveLength(1));
+    act(() => views[0].pasteMode(true));
+    await waitFor(() => expect(shell.write).toHaveBeenCalledTimes(1));
+
+    for (const command of ["echo c\necho d", "echo e", "echo f\necho g"]) {
+      act(() => requestPrefill({ command, shell: "bash" }));
+    }
+    await waitFor(() => expect(shell.write).toHaveBeenCalledTimes(4));
+    expect(shell.open).toHaveBeenCalledTimes(1);
+    expect(new Set(shell.write.mock.calls.map(([id]) => id))).toEqual(new Set(["pty-1"]));
+  });
+
+  it("opens nothing and writes nothing for a PowerShell block, however often it is clicked", async () => {
+    opensAs.push("/bin/zsh");
+    await withTab("zsh");
+    act(() => views[0].pasteMode(true));
+    for (let click = 0; click < 3; click += 1) act(() => requestPrefill({ command: "Get-Date", shell: "pwsh" }));
+    await act(async () => await new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(shell.open).not.toHaveBeenCalled();
+    expect(shell.write).not.toHaveBeenCalled();
+    expect(allSessions()).toHaveLength(1);
+  });
+});
