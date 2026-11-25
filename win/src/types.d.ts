@@ -2014,7 +2014,7 @@ declare global {
       };
 
       shell: {
-        /** The shells installed here; PowerShell and pwsh are one entry. */
+        /** The shells installed here, the default first; PowerShell and pwsh are one entry, and a Mac names each by its path. */
         list: () => Promise<{ success: boolean; shells?: string[] }>;
         /** Opens an interactive shell in the workspace's folder. The id is minted by the main process. */
         open: (

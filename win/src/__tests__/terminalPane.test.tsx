@@ -137,6 +137,17 @@ describe("shell tabs", () => {
     expect(shellName("zsh")).toBe("Zsh");
   });
 
+  it("names a Mac shell by the file its path ends in", async () => {
+    expect(shellName("/bin/zsh")).toBe("Zsh");
+    expect(shellName("/opt/homebrew/bin/fish")).toBe("Fish");
+    shell.open.mockImplementation(async () => ({ success: true, id: `pty-${++counter}`, shell: "/bin/zsh" }));
+    render(<Harness />);
+    fireEvent.click(screen.getByText("new shell"));
+    expect(await screen.findByText("Zsh")).toBeTruthy();
+    fireEvent.click(screen.getByText("new shell"));
+    expect(await screen.findByText("Zsh 2")).toBeTruthy();
+  });
+
   it("shows output and keeps the shell until it is closed", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("new shell"));
