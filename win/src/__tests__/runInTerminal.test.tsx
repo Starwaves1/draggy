@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import fs from "node:fs";
+import path from "node:path";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -8,6 +10,7 @@ import { allSessions, resetSessions } from "../terminal/terminalSessions";
 import { requestPrefill, resetTerminalBus } from "../terminal/terminalBus";
 import type { ShellId } from "../terminal/shells";
 import { translations } from "../translations";
+import { platformInfo, type PlatformInfo } from "../platform/info";
 
 /** "Run in terminal" puts a model's code block on a prompt. Nothing may run until a person presses Enter. */
 
@@ -90,6 +93,15 @@ const WINDOWS: Array<{ tabs: Tabs; shell: ShellId; opens: string | null; target:
   { tabs: "exited", shell: "bash", opens: "bash", target: "pty-2" },
   { tabs: "bash", shell: "pwsh", opens: "pwsh", target: "pty-2" },
 ];
+
+describe("the paste capability", () => {
+  it("is reported by the macOS shell and assumed everywhere else", () => {
+    const file = path.resolve(import.meta.dirname, "../../../shared/fixtures/platform/info.json");
+    const macos = (JSON.parse(fs.readFileSync(file, "utf8")) as { cases: { expected: PlatformInfo }[] }).cases[0].expected;
+    expect(macos.pasteMode).toBe("reported");
+    expect(platformInfo().pasteMode).toBe("assumed");
+  });
+});
 
 describe("Run in terminal on Windows keeps today's behaviour", () => {
   for (const row of WINDOWS) {
