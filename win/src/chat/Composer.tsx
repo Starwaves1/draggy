@@ -34,7 +34,7 @@ import type {
 import { allowedEfforts, effectiveEffort, effortColor, EFFORT_ORDER, nextEffort } from "../ai/effort";
 import { EffortSlider } from "./EffortSlider";
 import { EFFORT_LABELS } from "../settings/pages";
-import { formatShortcut, primaryModifierDown } from "../platform/shortcuts";
+import { controlBelongsToSystem, formatShortcut, primaryModifierDown } from "../platform/shortcuts";
 
 const MAX_INPUT_HEIGHT = 200;
 const WEB_MODE_ORDER: AppSettings["webMode"][] = ["on", "off"];
@@ -775,6 +775,8 @@ export function Composer({
                                 setEditing({ id: last.id, text: last.content });
                                 return;
                             }
+                            // Control+Return on a Mac is not Return, so it neither sends nor steers.
+                            if (e.key === "Enter" && controlBelongsToSystem(e)) return;
                             if (e.key === "Enter" && primaryModifierDown(e)) {
                                 e.preventDefault();
                                 if (chat.isGenerating) sendWhileGenerating(e.shiftKey ? "now" : "queue");

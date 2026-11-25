@@ -30,6 +30,11 @@ export function primaryModifierDown(event: Pick<KeyboardEvent, "ctrlKey" | "meta
   return event.metaKey && !event.ctrlKey;
 }
 
+/** Whether Control is down on a Mac, where it belongs to text fields and the system rather than the app. */
+export function controlBelongsToSystem(event: Pick<KeyboardEvent, "ctrlKey">): boolean {
+  return platformInfo().shortcuts === "command" && event.ctrlKey;
+}
+
 /** Whether the event is the shortcut's letter key. Option turns ⌥B into ∫ on a Mac, so there the physical key decides. */
 export function isLetterKey(event: Pick<KeyboardEvent, "key" | "code" | "altKey">, letter: string): boolean {
   if (platformInfo().shortcuts === "command" && event.altKey) return event.code === `Key${letter.toUpperCase()}`;

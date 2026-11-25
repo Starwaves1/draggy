@@ -217,3 +217,43 @@ describe("Composer queue editing", () => {
     expect(screen.queryByText("Ctrl+Enter")).toBeNull();
   });
 });
+
+describe("Return with Control on a Mac", () => {
+  function renderOnMac(generating: boolean) {
+    window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command" };
+    const queue = queueFixture();
+    const onSendMessage = vi.fn();
+    render(
+      <ComposerQueueContext.Provider value={queue}>
+        <ComposerPreview generating={generating} attachedFiles={[]} onSendMessage={onSendMessage} />
+      </ComposerQueueContext.Provider>,
+    );
+    fireEvent.change(field(), { target: { value: "draft" } });
+    return { queue, onSendMessage };
+  }
+
+  afterEach(() => {
+    delete window.__DRAGGY_PLATFORM__;
+  });
+
+  it.each([false, true])("does nothing with the text when a reply is generating: %s", (generating) => {
+    const { queue, onSendMessage } = renderOnMac(generating);
+
+    fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true });
+
+    expect(onSendMessage).not.toHaveBeenCalled();
+    expect(queue.steer).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(queue.sendNow).not.toHaveBeenCalled();
+    expect(field().value).toBe("draft");
+  });
+
+  it("leaves Command+Return to queue the text", () => {
+    const { queue } = renderOnMac(true);
+
+    fireEvent.keyDown(field(), { key: "Enter", metaKey: true });
+
+    expect(queue.enqueue).toHaveBeenCalledWith("draft", []);
+    expect(queue.steer).not.toHaveBeenCalled();
+  });
+});
