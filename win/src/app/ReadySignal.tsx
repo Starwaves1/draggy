@@ -16,7 +16,7 @@ export function ReadySignal() {
       );
     };
     requestAnimationFrame(() => {
-      // The next frame starts only once this one is committed, so waiting for it means a painted window.
+      // WebKit starts the next frame after committing this one, so by then the window almost always has content.
       if (platformInfo().readyAt === "frameCommitted") requestAnimationFrame(tell);
       else tell();
     });
