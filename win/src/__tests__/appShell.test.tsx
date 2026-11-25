@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import App from "../App";
 import { SETTINGS_KEY } from "../storage";
+import { markForeground, unmarkForeground } from "../tasks/taskStore";
 import { allTools } from "../tools/registry";
 import { clearFakeDraggyApi, installFakeDraggyApi } from "./helpers/draggyApi";
 import type { FakeApi } from "./helpers/draggyApi";
@@ -292,5 +293,41 @@ describe("the chat and code switch", () => {
     await act(async () => screen.getByRole("radio", { name: "Chat" }).click());
     expect(screen.queryByText("Open a project")).toBeNull();
     expect(localStorage.getItem("draggy_mode")).toBe("chat");
+  });
+
+  describe("sending the running command to the background", () => {
+    async function pressWithCommandRunning(keys: KeyboardEventInit) {
+      render(<App />);
+      await screen.findAllByText("Appearance");
+      const detach = vi.fn(async () => ({}));
+      Object.assign(window.draggy!, { commands: { detach } });
+      markForeground("run-1");
+      try {
+        fireEvent.keyDown(window, keys);
+      } finally {
+        unmarkForeground("run-1");
+      }
+      return detach;
+    }
+
+    afterEach(() => {
+      delete window.__DRAGGY_PLATFORM__;
+    });
+
+    it("answers Option-Command-B on a Mac, where Option turns the key into another character", async () => {
+      window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command" };
+      const detach = await pressWithCommandRunning({ key: "∫", code: "KeyB", metaKey: true, altKey: true });
+      expect(detach).toHaveBeenCalledWith("run-1");
+    });
+
+    it("answers Ctrl+Alt+B on Windows by the character, as it always has", async () => {
+      const detach = await pressWithCommandRunning({ key: "b", code: "KeyB", ctrlKey: true, altKey: true });
+      expect(detach).toHaveBeenCalledWith("run-1");
+    });
+
+    it("ignores another character on the B key on Windows, so other layouts keep their letters", async () => {
+      const detach = await pressWithCommandRunning({ key: "∫", code: "KeyB", ctrlKey: true, altKey: true });
+      expect(detach).not.toHaveBeenCalled();
+    });
   });
 });

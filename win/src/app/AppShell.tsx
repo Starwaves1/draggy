@@ -81,7 +81,7 @@ import { sameGeneration, startingEffort, useChatGeneration, type Generation } fr
 import { useImageEngine } from "../images/useImageEngine";
 import { fillComposer } from "../chat/mentions";
 import { CrashNotice } from "../CrashNotice";
-import { primaryModifierDown } from "../platform/shortcuts";
+import { isLetterKey, primaryModifierDown } from "../platform/shortcuts";
 
 export type ViewMode = "chat" | "files" | "talk" | "settings";
 
@@ -950,7 +950,7 @@ export default function AppShell({
   // Ctrl+Alt+B sends the command the agent is running to the background.
   useEffect(() => {
     const handleBackground = (e: KeyboardEvent) => {
-      if (!primaryModifierDown(e) || !e.altKey || e.shiftKey || e.key.toLowerCase() !== "b") return;
+      if (!primaryModifierDown(e) || !e.altKey || e.shiftKey || !isLetterKey(e, "b")) return;
       const runId = latestForeground();
       if (!runId) return;
       e.preventDefault();

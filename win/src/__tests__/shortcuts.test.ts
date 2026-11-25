@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PlatformInfo } from "../platform/info";
-import { formatShortcut, primaryModifierDown, type Chord } from "../platform/shortcuts";
+import { formatShortcut, isLetterKey, primaryModifierDown, type Chord } from "../platform/shortcuts";
 
 // What the macOS shell hands the renderer, from the case its Rust test checks the boot script against.
 const FILE = path.resolve(import.meta.dirname, "../../../shared/fixtures/platform/info.json");
@@ -80,6 +80,30 @@ describe("the primary modifier", () => {
     expect(primaryModifierDown(keys(true, false))).toBe(false);
     expect(primaryModifierDown(keys(true, true))).toBe(false);
     expect(primaryModifierDown(keys(false, false))).toBe(false);
+  });
+});
+
+const press = (key: string, code: string, altKey: boolean) => ({ key, code, altKey });
+
+describe("the letter key of a shortcut", () => {
+  it("is the character typed without platform info, as the handlers have always tested", () => {
+    expect(isLetterKey(press("b", "KeyB", true), "b")).toBe(true);
+    expect(isLetterKey(press("B", "KeyB", false), "b")).toBe(true);
+    expect(isLetterKey(press("∫", "KeyB", true), "b")).toBe(false);
+    expect(isLetterKey(press("b", "KeyN", false), "b")).toBe(true);
+    expect(isLetterKey(press("n", "KeyB", true), "b")).toBe(false);
+  });
+
+  it("is the physical key on a Mac while Option composes another character", () => {
+    onMac();
+    expect(isLetterKey(press("∫", "KeyB", true), "b")).toBe(true);
+    expect(isLetterKey(press("b", "KeyN", true), "b")).toBe(false);
+  });
+
+  it("follows the layout on a Mac without Option, as Command chords always have", () => {
+    onMac();
+    expect(isLetterKey(press("b", "KeyN", false), "b")).toBe(true);
+    expect(isLetterKey(press("n", "KeyB", false), "b")).toBe(false);
   });
 });
 

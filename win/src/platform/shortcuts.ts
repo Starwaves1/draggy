@@ -29,3 +29,9 @@ export function primaryModifierDown(event: Pick<KeyboardEvent, "ctrlKey" | "meta
   if (platformInfo().shortcuts !== "command") return event.ctrlKey || event.metaKey;
   return event.metaKey && !event.ctrlKey;
 }
+
+/** Whether the event is the shortcut's letter key. Option turns ⌥B into ∫ on a Mac, so there the physical key decides. */
+export function isLetterKey(event: Pick<KeyboardEvent, "key" | "code" | "altKey">, letter: string): boolean {
+  if (platformInfo().shortcuts === "command" && event.altKey) return event.code === `Key${letter.toUpperCase()}`;
+  return event.key.toLowerCase() === letter;
+}
