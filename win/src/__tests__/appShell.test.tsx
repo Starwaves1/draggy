@@ -315,7 +315,7 @@ describe("the chat and code switch", () => {
     });
 
     it("answers Option-Command-B on a Mac, where Option turns the key into another character", async () => {
-      window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command", pasteMode: "reported" };
+      window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command", codeToTerminal: "withheld" };
       const detach = await pressWithCommandRunning({ key: "∫", code: "KeyB", metaKey: true, altKey: true });
       expect(detach).toHaveBeenCalledWith("run-1");
     });

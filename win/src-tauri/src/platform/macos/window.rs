@@ -49,14 +49,14 @@ fn on_ns_window(
     })
 }
 
-/// Tells the renderer before its first frame: the system draws window controls, `reveal` is instant,
-/// Command leads shortcuts, and the pty passes the shell's bracketed-paste request through.
+/// Tells the renderer, before its first frame, who draws the window controls, when `reveal` shows the
+/// window, which key leads shortcuts and that no code block goes to the terminal.
 fn boot_script() -> String {
     let info = json!({
         "windowControls": "native",
         "readyAt": "frameCommitted",
         "shortcuts": "command",
-        "pasteMode": "reported",
+        "codeToTerminal": "withheld",
     });
     format!("window.__DRAGGY_PLATFORM__ = Object.freeze({info});")
 }
