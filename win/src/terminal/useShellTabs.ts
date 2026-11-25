@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { openPane, terminalPane, type DockLayout } from "../app/dockLayout";
+import { platformInfo } from "../platform/info";
 import { onPrefill, onShowTasks, takePrefill, type PrefillRequest } from "./terminalBus";
-import type { ShellId } from "./shells";
-import { activeSessionId, openSession, prefillSession, selectSession, sessionsFor, shellName } from "./terminalSessions";
+import { PASTE_WAIT_MS, planPrefill } from "./prefill";
+import { activeSessionId, focusSession, openSession, prefillSession, selectSession, sessionsFor, waitForPaste } from "./terminalSessions";
 
 interface ShellTabsOptions {
   workspaceId: string;
@@ -14,6 +15,8 @@ interface ShellTabsOptions {
   onMessage: (text: string) => void;
   t: (key: string) => string;
 }
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Each shell is a tab in the dock. This opens them: from the + menu, from the Terminal item, and
  * for a command a code block sends (which lands on a prompt and is never run). */
@@ -31,7 +34,7 @@ export function useShellTabs({ workspaceId, defaultShell, layout, onLayoutChange
   }, []);
 
   const openShell = useCallback(
-    async (shell?: ShellId): Promise<string | null> => {
+    async (shell?: string): Promise<string | null> => {
       const { defaultShell: preferred, onMessage: say, t: text } = latest.current;
       const outcome = await openSession(workspaceId, shell, preferred === "auto" ? undefined : preferred);
       if (!outcome.success || !outcome.id) {
@@ -60,13 +63,31 @@ export function useShellTabs({ workspaceId, defaultShell, layout, onLayoutChange
 
   useEffect(() => {
     const handle = async (request: PrefillRequest) => {
-      const wanted = request.shell ? shellName(request.shell) : null;
-      const match = sessionsFor(workspaceId).find((session) => !session.exited && (!wanted || shellName(session.shell) === wanted));
-      const id = match?.id ?? (await openShell(request.shell));
-      if (!id) return;
-      selectSession(workspaceId, id);
-      if (match) showTab(id);
-      setTimeout(() => prefillSession(id, request.command), match ? 0 : 400);
+      const { pasteMode } = platformInfo();
+      const opened: string[] = [];
+      for (;;) {
+        const step = planPrefill({ ...request, pasteMode, sessions: sessionsFor(workspaceId), activeId: activeSessionId(workspaceId), opened });
+        if (step.kind === "stop") {
+          if (opened.length) focusSession(opened[opened.length - 1]);
+          return;
+        }
+        if (step.kind === "open") {
+          const id = await openShell(step.shell);
+          if (!id) return;
+          selectSession(workspaceId, id);
+          opened.push(id);
+          // Where the shell cannot report its paste mode, a fresh tab gets a fixed head start instead.
+          await (pasteMode === "assumed" ? delay(400) : waitForPaste(id, PASTE_WAIT_MS));
+          continue;
+        }
+        selectSession(workspaceId, step.id);
+        if (!opened.includes(step.id)) {
+          showTab(step.id);
+          await delay(0);
+        }
+        prefillSession(step.id, step.data);
+        return;
+      }
     };
     const waiting = takePrefill();
     if (waiting) void handle(waiting);
