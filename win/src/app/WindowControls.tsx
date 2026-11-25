@@ -65,7 +65,7 @@ export interface WindowControlsProps {
   t: (key: string) => string;
 }
 
-// Minimize, maximize/restore and close for the undecorated main window, in the title bar's right end.
+// Minimize, maximize/restore and close at the title bar's end, where the shell does not draw the window controls.
 export function WindowControls({ t }: WindowControlsProps) {
   const restore = useWindowState("maximized", true);
   return (
@@ -128,7 +128,7 @@ export function WindowBar({ t }: WindowControlsProps) {
   );
 }
 
-/** Gives a screen with no TitleBar a drag strip and caption buttons, so the undecorated window can move and close. */
+/** Gives a screen with no TitleBar a drag strip, plus caption buttons where the shell does not draw the window controls. */
 export function WindowFrame({ language, children }: { language: string; children: ReactNode }) {
   const t = useTranslator(language);
   return (
