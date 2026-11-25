@@ -343,9 +343,6 @@ pub fn production_serve(app: AppHandle) -> Serve {
             AppKeys { app: app.clone() },
             crate::ipc::providers::active_catalog(),
         );
-        let allowed = |origin: &str| {
-            origin == RENDERER_ORIGIN || (cfg!(debug_assertions) && origin == DEV_ORIGIN)
-        };
         let clock = || {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -362,12 +359,17 @@ pub fn production_serve(app: AppHandle) -> Serve {
             http: &AppHttp,
             sleeper: &sleeper,
             accounts: &accounts,
-            allowed_origin: &allowed,
+            allowed_origin: &renderer_origin,
             engine_port: &engine,
             clock: &clock,
         };
         gateway.serve(request, sink)
     })
+}
+
+/// Whether a request comes from the app's own pages, or the dev server in debug builds.
+fn renderer_origin(origin: &str) -> bool {
+    origin == RENDERER_ORIGIN || (cfg!(debug_assertions) && origin == DEV_ORIGIN)
 }
 
 /// The renderer's connect-src with the draggy-ai entries replaced by the gateway's origin and nothing else.
@@ -626,6 +628,138 @@ mod tests {
         assert!(patched.contains("default-src 'self' draggy:"));
         assert!(!patched.contains("draggy-ai"));
         assert!(!patched.contains("*"));
+    }
+
+    /// The page origin each OS's WebView gives the app's own pages.
+    #[cfg(target_os = "macos")]
+    const PAGE: &str = "tauri://localhost";
+    #[cfg(not(target_os = "macos"))]
+    const PAGE: &str = "http://tauri.localhost";
+
+    #[derive(Default)]
+    struct Kv(BTreeMap<String, String>);
+
+    impl draggy_providers::registry::KvStore for Kv {
+        fn get(&self, key: &str) -> Option<String> {
+            self.0.get(key).cloned()
+        }
+        fn set(&mut self, key: &str, value: &str) {
+            self.0.insert(key.to_owned(), value.to_owned());
+        }
+    }
+
+    struct NoKeys;
+
+    impl draggy_providers::registry::Keystore for NoKeys {
+        fn available(&self) -> bool {
+            false
+        }
+        fn get(&self, _owner: &str) -> Option<String> {
+            None
+        }
+        fn set(&mut self, _owner: &str, _key: Option<&str>) -> bool {
+            false
+        }
+        fn remove(&mut self, _owner: &str) {}
+    }
+
+    /// The engine, answering every request with one reply.
+    struct Engine;
+
+    impl draggy_providers::http::HttpClient for Engine {
+        fn send(
+            &self,
+            _request: &draggy_providers::http::HttpRequest,
+        ) -> Result<draggy_providers::http::HttpResponse, TransportError> {
+            Ok(draggy_providers::http::HttpResponse {
+                status: 200,
+                headers: BTreeMap::new(),
+                body: "engine reply".to_owned(),
+            })
+        }
+    }
+
+    /// The real gateway behind the router, with the origin rule production uses.
+    fn real_gateway() -> Serve {
+        Arc::new(|request, port, sink, gone| {
+            let registry = Registry::new(
+                Kv::default(),
+                NoKeys,
+                draggy_providers::catalog::Catalog::bundled(),
+            );
+            let engine = move || port;
+            let clock = || 0;
+            Gateway {
+                registry: &registry,
+                http: &Engine,
+                sleeper: &Waits { gone },
+                accounts: &[],
+                allowed_origin: &renderer_origin,
+                engine_port: &engine,
+                clock: &clock,
+            }
+            .serve(request, sink)
+        })
+    }
+
+    #[tokio::test]
+    async fn serves_the_apps_own_page_and_refuses_other_origins() {
+        let base = spawn(real_gateway()).await;
+        let client = reqwest::Client::new();
+        let preflight = |origin: &'static str| {
+            client
+                .request(reqwest::Method::OPTIONS, format!("{base}/chat"))
+                .header("origin", origin)
+                .header("access-control-request-method", "POST")
+                .send()
+        };
+
+        let allowed = preflight(PAGE).await.expect("send");
+        assert_eq!(allowed.status(), 204);
+        assert_eq!(allowed.headers()["access-control-allow-origin"], PAGE);
+        let served = post(&base)
+            .header("origin", PAGE)
+            .send()
+            .await
+            .expect("send");
+        assert_eq!(served.status(), 200);
+        assert_eq!(served.text().await.expect("text"), "engine reply");
+
+        let tokenless = client
+            .post(format!("{base}/chat"))
+            .header("origin", PAGE)
+            .body(r#"{"model":"gguf:a.gguf"}"#)
+            .send()
+            .await
+            .expect("send");
+        assert_eq!(tokenless.status(), 401);
+
+        let other_os = if PAGE == "tauri://localhost" {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+        for origin in [
+            "https://evil.example",
+            "null",
+            "tauri://evil.example",
+            "widget://localhost",
+            other_os,
+        ] {
+            let refused = preflight(origin).await.expect("send");
+            assert_eq!(refused.status(), 403, "{origin}");
+            assert!(
+                !refused
+                    .headers()
+                    .contains_key("access-control-allow-origin")
+            );
+            let posted = post(&base)
+                .header("origin", origin)
+                .send()
+                .await
+                .expect("send");
+            assert_eq!(posted.status(), 403, "{origin}");
+        }
     }
 
     #[test]
