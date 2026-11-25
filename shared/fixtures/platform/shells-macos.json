@@ -1,0 +1,460 @@
+{
+  "area": "platform",
+  "description": "macOS shell catalogue for the user's terminal: the login shell ($SHELL), the text of /etc/shells and which candidates exist decide the list (default first) and the shell `shell:open` starts. The stock /etc/shells text is the guest's real file; paths are Apple's or Homebrew's, nothing identifying",
+  "cases": [
+    {
+      "name": "a stock Mac lists the login shell zsh, then bash and sh",
+      "input": {
+        "op": "available",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ]
+      },
+      "expected": [
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "a bash login shell comes first",
+      "input": {
+        "op": "available",
+        "login": "/bin/bash",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ]
+      },
+      "expected": [
+        "/bin/bash",
+        "/bin/zsh",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "a shell added to /etc/shells is offered after the standard ones",
+      "input": {
+        "op": "available",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n/opt/homebrew/bin/fish\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh",
+          "/opt/homebrew/bin/fish"
+        ]
+      },
+      "expected": [
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh",
+        "/opt/homebrew/bin/fish"
+      ]
+    },
+    {
+      "name": "an added login shell comes first",
+      "input": {
+        "op": "available",
+        "login": "/opt/homebrew/bin/fish",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n/opt/homebrew/bin/fish\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh",
+          "/opt/homebrew/bin/fish"
+        ]
+      },
+      "expected": [
+        "/opt/homebrew/bin/fish",
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "a legacy shell is offered only as the login shell",
+      "input": {
+        "op": "available",
+        "login": "/bin/tcsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ]
+      },
+      "expected": [
+        "/bin/tcsh",
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "a login shell /etc/shells does not list is ignored",
+      "input": {
+        "op": "available",
+        "login": "/tmp/evil",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh",
+          "/tmp/evil"
+        ]
+      },
+      "expected": [
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "a listed shell that is not installed is left out",
+      "input": {
+        "op": "available",
+        "login": "/opt/homebrew/bin/fish",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n/opt/homebrew/bin/fish\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ]
+      },
+      "expected": [
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "no SHELL and no /etc/shells still offer the standard shells present",
+      "input": {
+        "op": "available",
+        "login": null,
+        "etcShells": "",
+        "present": [
+          "/bin/zsh",
+          "/bin/sh"
+        ]
+      },
+      "expected": [
+        "/bin/zsh",
+        "/bin/sh"
+      ]
+    },
+    {
+      "name": "with nothing asked for the login shell opens as a login shell",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": null,
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/zsh",
+        "file": "/bin/zsh",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": null
+      }
+    },
+    {
+      "name": "a listed shell opens by its path",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": "/bin/bash",
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/bash",
+        "file": "/bin/bash",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": null
+      }
+    },
+    {
+      "name": "a bash code block opens bash",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": "bash",
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/bash",
+        "file": "/bin/bash",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": null
+      }
+    },
+    {
+      "name": "a Windows shell opens the default with a notice",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": "pwsh",
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/zsh",
+        "file": "/bin/zsh",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": "pwsh is not on this Mac, so the terminal opened zsh instead."
+      }
+    },
+    {
+      "name": "a Windows default setting opens the default with a notice",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": null,
+        "defaultShell": "powershell"
+      },
+      "expected": {
+        "shell": "/bin/zsh",
+        "file": "/bin/zsh",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": "powershell is not on this Mac, so the terminal opened zsh instead."
+      }
+    },
+    {
+      "name": "a remembered shell that was removed opens the default with a notice",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": "/opt/homebrew/bin/fish",
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/zsh",
+        "file": "/bin/zsh",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": "fish is not on this Mac, so the terminal opened zsh instead."
+      }
+    },
+    {
+      "name": "the default setting picks the shell when none is asked for",
+      "input": {
+        "op": "interactive",
+        "login": "/bin/zsh",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": null,
+        "defaultShell": "/bin/bash"
+      },
+      "expected": {
+        "shell": "/bin/bash",
+        "file": "/bin/bash",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": null
+      }
+    },
+    {
+      "name": "an invalid SHELL leaves zsh as the default and as SHELL",
+      "input": {
+        "op": "interactive",
+        "login": "/tmp/evil",
+        "etcShells": "# List of acceptable shells for chpass(1).\n# Ftpd will not allow users to connect who are not using\n# one of these shells.\n\n/bin/bash\n/bin/csh\n/bin/dash\n/bin/ksh\n/bin/sh\n/bin/tcsh\n/bin/zsh\n",
+        "present": [
+          "/bin/bash",
+          "/bin/csh",
+          "/bin/dash",
+          "/bin/ksh",
+          "/bin/sh",
+          "/bin/tcsh",
+          "/bin/zsh"
+        ],
+        "requested": null,
+        "defaultShell": null
+      },
+      "expected": {
+        "shell": "/bin/zsh",
+        "file": "/bin/zsh",
+        "args": [
+          "-l"
+        ],
+        "env": [
+          [
+            "SHELL",
+            "/bin/zsh"
+          ]
+        ],
+        "notice": null
+      }
+    },
+    {
+      "name": "no shell at all is an error",
+      "input": {
+        "op": "interactive",
+        "login": null,
+        "etcShells": "",
+        "present": [],
+        "requested": null,
+        "defaultShell": null
+      },
+      "expected": {
+        "error": "No shell was found on this Mac."
+      }
+    }
+  ]
+}

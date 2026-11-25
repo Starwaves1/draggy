@@ -11,6 +11,7 @@ use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_s
 use regex::Regex;
 
 use super::sanitize::Sanitizer;
+use super::shells::ANSWERS_CURSOR_QUERY;
 
 pub const MAX_SESSIONS: usize = 8;
 pub const MAX_WRITE_CHARS: usize = 65_536;
@@ -94,7 +95,7 @@ pub struct Launch<'a> {
 }
 
 /// ConPTY asks where the cursor is when it starts and waits for the answer. Nothing may be listening yet (a
-/// background task never has a terminal), so the host answers that first query itself.
+/// background task never has a terminal), so the host answers that first query itself where the OS needs it.
 const CURSOR_QUERY: &str = "\u{1b}[6n";
 
 fn answer_cursor(sessions: &Sessions, id: &str) {
@@ -227,7 +228,7 @@ impl Host {
                     Ok(read) => {
                         carry.extend_from_slice(&buffer[..read]);
                         let mut text = take_text(&mut carry);
-                        if !answered && text.contains(CURSOR_QUERY) {
+                        if ANSWERS_CURSOR_QUERY && !answered && text.contains(CURSOR_QUERY) {
                             answered = true;
                             text = text.replacen(CURSOR_QUERY, "", 1);
                             answer_cursor(&reader_sessions, &reader_id);
