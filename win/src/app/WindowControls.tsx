@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
 import { useTranslator } from "../i18n";
 import { logSwallow, swallowed } from "../logger";
+import { platformInfo } from "../platform/info";
 
 /** The current window, or null outside Tauri (tests, plain browser preview). */
 function currentWindow(): Window | null {
@@ -16,6 +17,37 @@ function currentWindow(): Window | null {
 function run(action: (win: Window) => Promise<void>) {
   const win = currentWindow();
   if (win) void action(win).catch(swallowed("window-controls", "window command failed"));
+}
+
+const READ = {
+  maximized: (win: Window) => win.isMaximized(),
+  fullscreen: (win: Window) => win.isFullscreen(),
+} as const;
+
+/** Whether the window is maximized or fullscreen, read again on every resize. */
+function useWindowState(state: keyof typeof READ, enabled: boolean): boolean {
+  const [value, setValue] = useState(false);
+
+  useEffect(() => {
+    const win = enabled ? currentWindow() : null;
+    if (!win) return;
+    let active = true;
+    const sync = () => {
+      void READ[state](win)
+        .then((next) => {
+          if (active) setValue(next);
+        })
+        .catch(swallowed("window-controls", `${state} state read failed`));
+    };
+    sync();
+    const unlisten = win.onResized(sync);
+    return () => {
+      active = false;
+      void unlisten.then((stop) => stop()).catch(swallowed("window-controls", "unlisten failed"));
+    };
+  }, [state, enabled]);
+
+  return value;
 }
 
 // Segoe Fluent Icons code points, as the Windows 11 caption buttons draw them.
@@ -35,29 +67,7 @@ export interface WindowControlsProps {
 
 // Minimize, maximize/restore and close for the undecorated main window, in the title bar's right end.
 export function WindowControls({ t }: WindowControlsProps) {
-  const [maximized, setMaximized] = useState(false);
-
-  useEffect(() => {
-    const win = currentWindow();
-    if (!win) return;
-    let active = true;
-    const sync = () => {
-      void win
-        .isMaximized()
-        .then((value) => {
-          if (active) setMaximized(value);
-        })
-        .catch(swallowed("window-controls", "maximized state read failed"));
-    };
-    sync();
-    const unlisten = win.onResized(sync);
-    return () => {
-      active = false;
-      void unlisten.then((stop) => stop()).catch(swallowed("window-controls", "unlisten failed"));
-    };
-  }, []);
-
-  const restore = maximized;
+  const restore = useWindowState("maximized", true);
   return (
     <div className="flex h-full items-stretch">
       <button
@@ -97,6 +107,15 @@ export function WindowControls({ t }: WindowControlsProps) {
   );
 }
 
+/** Keeps title-bar content out from under the system's traffic lights. The lights hide in
+ * fullscreen, so the space goes with them. */
+export function TrafficLightSpace() {
+  const native = platformInfo().windowControls === "native";
+  const fullscreen = useWindowState("fullscreen", native);
+  if (!native || fullscreen) return null;
+  return <div data-tauri-drag-region data-testid="traffic-light-space" className="h-10 w-[68px] shrink-0" />;
+}
+
 /** A 40px drag strip with the caption buttons, for screens that have no TitleBar. */
 export function WindowBar({ t }: WindowControlsProps) {
   return (
@@ -104,7 +123,7 @@ export function WindowBar({ t }: WindowControlsProps) {
       data-tauri-drag-region
       className="flex h-10 w-full shrink-0 items-stretch justify-end border-b border-rule bg-surface-canvas"
     >
-      <WindowControls t={t} />
+      {platformInfo().windowControls === "drawn" && <WindowControls t={t} />}
     </div>
   );
 }
