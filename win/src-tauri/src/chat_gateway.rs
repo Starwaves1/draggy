@@ -705,7 +705,7 @@ mod tests {
     async fn serves_the_apps_own_page_and_refuses_other_origins() {
         let base = spawn(real_gateway()).await;
         let client = reqwest::Client::new();
-        let preflight = |origin: &'static str| {
+        let preflight = |origin: &str| {
             client
                 .request(reqwest::Method::OPTIONS, format!("{base}/chat"))
                 .header("origin", origin)
@@ -738,13 +738,23 @@ mod tests {
         } else {
             "tauri://localhost"
         };
-        for origin in [
+        let mut origins: Vec<String> = [
             "https://evil.example",
             "null",
             "tauri://evil.example",
             "widget://localhost",
             other_os,
-        ] {
+        ]
+        .map(str::to_owned)
+        .into();
+        // Near misses of the page origin: the match is exact, so each is a different origin.
+        origins.extend([
+            format!("{PAGE}.evil.example"),
+            format!("{PAGE}:1"),
+            format!("{PAGE}/"),
+            PAGE.to_uppercase(),
+        ]);
+        for origin in origins.iter().map(String::as_str) {
             let refused = preflight(origin).await.expect("send");
             assert_eq!(refused.status(), 403, "{origin}");
             assert!(
