@@ -65,6 +65,7 @@ export function useShellTabs({ workspaceId, defaultShell, layout, onLayoutChange
     const handle = async (request: PrefillRequest) => {
       const { pasteMode } = platformInfo();
       const opened: string[] = [];
+      const shown: string[] = [];
       for (;;) {
         const step = planPrefill({ ...request, pasteMode, sessions: sessionsFor(workspaceId), activeId: activeSessionId(workspaceId), opened });
         if (step.kind === "stop") {
@@ -81,9 +82,12 @@ export function useShellTabs({ workspaceId, defaultShell, layout, onLayoutChange
           continue;
         }
         selectSession(workspaceId, step.id);
-        if (!opened.includes(step.id)) {
+        if (!opened.includes(step.id) && !shown.includes(step.id)) {
           showTab(step.id);
+          shown.push(step.id);
+          // The tab renders before the text lands; the plan is made again in case the shell moved on.
           await delay(0);
+          continue;
         }
         prefillSession(step.id, step.data);
         return;

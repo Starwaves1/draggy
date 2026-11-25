@@ -244,6 +244,9 @@ describe("Run in terminal on macOS", () => {
 
   const advance = (ms: number) => act(async () => await vi.advanceTimersByTimeAsync(ms));
 
+  // A click still waiting on a shell would carry into the next test.
+  afterEach(() => advance(PASTE_WAIT_MS * 3));
+
   it("pastes into a fresh shell once it turns bracketed paste on, however long its prompt took", async () => {
     render(<Harness />);
     act(() => requestPrefill({ command: "touch one\ntouch two\nls", shell: "bash" }));
@@ -280,6 +283,19 @@ describe("Run in terminal on macOS", () => {
     act(() => views[1].pasteMode(true));
     await advance(0);
     expect(shell.write.mock.calls).toEqual([["pty-2", "\u001b[200~touch one\nls\u001b[201~"]]);
+  });
+
+  it("plans again after showing the tab, so a shell that has just left its prompt gets nothing", async () => {
+    opensAs.push("/bin/zsh");
+    render(<Harness />);
+    fireEvent.click(screen.getByText("new shell"));
+    await advance(0);
+    act(() => views[0].pasteMode(true));
+    act(() => requestPrefill({ command: "touch one\nls", shell: "bash" }));
+    act(() => views[0].pasteMode(false));
+    await advance(0);
+    expect(shell.write).not.toHaveBeenCalled();
+    expect(shell.open).toHaveBeenCalledTimes(2);
   });
 
   it("stops waiting when the fresh shell exits", async () => {
