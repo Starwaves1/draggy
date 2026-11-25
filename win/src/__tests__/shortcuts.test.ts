@@ -118,25 +118,99 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-function code(file: string): string {
-  return fs
-    .readFileSync(file, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+// Strings are matched first and kept, so a URL's // or a glob's /* hides nothing; comments are dropped.
+// Not a parser: a regex literal with a quote or //, or a backtick nested in ${}, can still mislead it.
+const STRING_OR_COMMENT = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|\/\/[^\n]*|\/\*[\s\S]*?\*\//g;
+
+function code(source: string): string {
+  return source.replace(STRING_OR_COMMENT, (_match, literal?: string) => literal ?? "");
 }
+
+// Ctrl+Tab is the one chord that is Control on every platform, and the shortcuts sheet is its one label.
+const CONTROL_EVERYWHERE = path.join("ui", "ShortcutsSheet.tsx");
+
+function writesCtrl(source: string, file: string): boolean {
+  const label = file.endsWith(CONTROL_EVERYWHERE) ? /Ctrl\s*\+(?!(Shift\+)?Tab\b)/ : /Ctrl\s*\+/;
+  return label.test(code(source)) || /(["'`])Ctrl\1/.test(code(source));
+}
+
+// Both keys joined by ||, or both negated and joined by &&. A chain that adds altKey asks whether any modifier is down.
+function pair(join: string, not: string): RegExp {
+  const key = String.raw`${not}(?:[\w$.]+\.)?`;
+  const alt = String.raw`${key}altKey`;
+  return new RegExp(String.raw`(?<!${alt}\s*${join}\s*)(?<![\w$.])${key}(ctrlKey|metaKey)\s*${join}\s*${key}(?!\1)(?:ctrlKey|metaKey)\b(?!\s*${join}\s*${alt})`);
+}
+
+const PAIRS = [pair(String.raw`\|\|`, ""), pair("&&", String.raw`!\s*`)];
+
+function testsCtrlAndMeta(source: string): boolean {
+  return PAIRS.some((pattern) => pattern.test(code(source)));
+}
+
+describe("the guard's own matchers", () => {
+  const ANYWHERE = path.join("app", "AppShell.tsx");
+
+  it.each([
+    ['label("Ctrl+B")', ANYWHERE],
+    ["label('Ctrl + B')", ANYWHERE],
+    ["<kbd>Ctrl+K</kbd>", ANYWHERE],
+    ["const keys = `Ctrl+${letter}`;", ANYWHERE],
+    ['const mod = "Ctrl";', ANYWHERE],
+    ['keys: ["Ctrl+Tab"]', ANYWHERE],
+    ['keys: ["Ctrl+B"]', CONTROL_EVERYWHERE],
+    ['open("https://example.com"); label("Ctrl+B");', ANYWHERE],
+    ['glob("src/**/*.ts"); label("Ctrl+B"); // */', ANYWHERE],
+  ])("flags the label in %s", (source, file) => {
+    expect(writesCtrl(source, file)).toBe(true);
+  });
+
+  it.each([
+    ["foo(); // Ctrl+B does X", ANYWHERE],
+    ["/* Ctrl+B */ foo();", ANYWHERE],
+    ["/** Opened with Ctrl+/. */", ANYWHERE],
+    ['keys: ["Ctrl+Tab"]', CONTROL_EVERYWHERE],
+    ['keys: ["Ctrl+Shift+Tab"]', CONTROL_EVERYWHERE],
+    ['formatShortcut("Mod+B")', ANYWHERE],
+    ['e.key === "Control" && e.ctrlKey', ANYWHERE],
+  ])("leaves %s alone", (source, file) => {
+    expect(writesCtrl(source, file)).toBe(false);
+  });
+
+  it.each([
+    "if (e.ctrlKey || e.metaKey) go();",
+    "if (event.metaKey||event.ctrlKey) go();",
+    "const { ctrlKey, metaKey } = e; if (ctrlKey || metaKey) go();",
+    "if (!e.ctrlKey && !e.metaKey) return;",
+    "if (!metaKey&&!ctrlKey) return;",
+    "if (a && (e.ctrlKey || e.metaKey)) go();",
+    'open("https://example.com"); if (e.ctrlKey || e.metaKey) go();',
+  ])("flags the handler in %s", (source) => {
+    expect(testsCtrlAndMeta(source)).toBe(true);
+  });
+
+  it.each([
+    "if (event.ctrlKey || event.metaKey || event.altKey) return;",
+    "if (e.altKey || e.ctrlKey || e.metaKey) return;",
+    "if (!e.ctrlKey || e.altKey || e.metaKey || e.key !== \"Tab\") return;",
+    "if (e.ctrlKey && !e.metaKey) go();",
+    "if (primaryModifierDown(e)) go();",
+    "foo(); // e.ctrlKey || e.metaKey",
+  ])("leaves %s alone", (source) => {
+    expect(testsCtrlAndMeta(source)).toBe(false);
+  });
+});
 
 describe("one way to write and read a shortcut", () => {
   const files = sourceFiles(SRC).filter((file) => !file.endsWith(path.join("platform", "shortcuts.ts")));
+  const read = (file: string) => fs.readFileSync(file, "utf8");
 
   it("labels name the primary modifier as Mod, so a Mac can show Command", () => {
-    // Ctrl+Tab is the one chord that is Control on every platform.
-    const offenders = files.filter((file) => /Ctrl\+(?!(Shift\+)?Tab\b)/.test(code(file)));
+    const offenders = files.filter((file) => writesCtrl(read(file), file));
     expect(offenders.map((file) => path.relative(SRC, file))).toEqual([]);
   });
 
   it("handlers ask for the primary modifier instead of testing Ctrl and the Windows key", () => {
-    const pair = /\w+\.ctrlKey \|\| \w+\.metaKey(?! \|\|)|!\w+\.ctrlKey && !\w+\.metaKey/;
-    const offenders = files.filter((file) => pair.test(code(file)));
+    const offenders = files.filter((file) => testsCtrlAndMeta(read(file)));
     expect(offenders.map((file) => path.relative(SRC, file))).toEqual([]);
   });
 });
