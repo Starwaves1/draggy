@@ -1,7 +1,6 @@
 import { logSwallow } from "../logger";
 import { createTerminalView, type TerminalView } from "./xtermView";
-import { promptText } from "./terminalBus";
-import type { ShellId } from "./shells";
+import { codeGoesToTerminal, promptText } from "./terminalBus";
 
 /** The open terminals, kept outside the pane so switching to another dock pane and back does not
  * close a shell. Each one is an xterm on its own element that the pane attaches where it shows. */
@@ -49,9 +48,10 @@ export const allSessions = (): TerminalSession[] => sessions;
 export const sessionsFor = (workspaceId: string): TerminalSession[] => sessions.filter((session) => session.workspaceId === workspaceId);
 export const activeSessionId = (workspaceId: string): string | null => active.get(workspaceId) ?? null;
 
-/** The name a shell tab carries. PowerShell and pwsh are one shell, so both read "Pwsh". */
+/** The name a shell tab carries. PowerShell and pwsh are one shell, so both read "Pwsh". A Mac names a
+ * shell by its path, so "/bin/zsh" reads "Zsh". */
 export function shellName(shell: string): string {
-  const id = shell.toLowerCase().replace(/\.exe$/, "");
+  const id = (shell.split("/").at(-1) ?? "").toLowerCase().replace(/\.exe$/, "");
   if (id === "pwsh" || id === "powershell") return "Pwsh";
   if (id === "cmd") return "CMD";
   return id ? id[0].toUpperCase() + id.slice(1) : "Shell";
@@ -70,10 +70,10 @@ export function sessionLabels(workspaceId: string): Map<string, string> {
   return labels;
 }
 
-/** The shells installed here, as the ids a new terminal takes. */
-export async function availableShells(): Promise<ShellId[]> {
+/** The shells installed here, the default first, as the ids a new terminal takes. */
+export async function availableShells(): Promise<string[]> {
   const result = await api()?.list();
-  return (result?.shells ?? []) as ShellId[];
+  return result?.shells ?? [];
 }
 
 export function selectSession(workspaceId: string, id: string): void {
@@ -107,7 +107,7 @@ function release(): void {
   disposers = [];
 }
 
-export async function openSession(workspaceId: string, shell: ShellId | undefined, defaultShell: string | undefined): Promise<OpenOutcome> {
+export async function openSession(workspaceId: string, shell: string | undefined, defaultShell: string | undefined): Promise<OpenOutcome> {
   const bridge = api();
   if (!bridge) return { success: false, unavailable: true };
 
@@ -175,7 +175,7 @@ export function focusSession(id: string): void {
 export function prefillSession(id: string, command: string): boolean {
   const session = byId(id);
   const bridge = api();
-  if (!session || !bridge || session.exited) return false;
+  if (!session || !bridge || session.exited || !codeGoesToTerminal()) return false;
 
   const lines = String(command).split("\n").map(promptText).filter(Boolean);
   if (!lines.length) return false;

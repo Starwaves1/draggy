@@ -1,3 +1,4 @@
+import { platformInfo } from "../platform/info";
 import type { ShellId } from "./shells";
 
 /** What the chat hands the terminal pane: a command to put on the prompt, and the commands the agent
@@ -31,9 +32,13 @@ export function promptText(command: string): string {
   return String(command).replace(/\r/g, "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "").trimEnd();
 }
 
+/** Whether model text may reach a prompt at all. On macOS it may not: `/bin/bash` 3.2 has no bracketed
+ * paste, so pasted lines would run. */
+export const codeGoesToTerminal = (): boolean => platformInfo().codeToTerminal === "offered";
+
 /** Asks the pane to put a command on a prompt. Held until a pane takes it, so the pane can be opened by the same click. */
 export function requestPrefill(request: PrefillRequest): void {
-  if (!promptText(request.command)) return;
+  if (!codeGoesToTerminal() || !promptText(request.command)) return;
   pending = request;
   for (const listener of prefillListeners) listener(request);
 }

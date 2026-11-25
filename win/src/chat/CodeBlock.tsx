@@ -4,7 +4,7 @@ import { SYNTAX_THEME } from "./syntaxTheme";
 import { Icon } from "../ui";
 import { copyText } from "../utils";
 import { translate } from "../i18n";
-import { requestPrefill, shellForLanguage } from "../terminal/terminalBus";
+import { codeGoesToTerminal, requestPrefill, shellForLanguage } from "../terminal/terminalBus";
 
 /** A fenced code block: language, copy button, highlighted source. Its own file because fast
  * refresh wants components or constants exported, not both. */
@@ -25,7 +25,7 @@ export function CodeBlock({ language, value }: CodeBlockProps) {
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const runShell = shellForLanguage(language);
+  const runShell = codeGoesToTerminal() ? shellForLanguage(language) : undefined;
 
   return (
     <div dir="ltr" data-code={language} className="my-4 rounded-md overflow-hidden border border-rule bg-surface-base max-w-full">

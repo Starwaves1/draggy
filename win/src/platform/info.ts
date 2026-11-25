@@ -10,10 +10,15 @@ export type ReadyAt = "frameStarted" | "frameCommitted";
 /** Which key leads the app's shortcuts. Command also means they are written with the Mac's symbols. */
 export type Shortcuts = "ctrl" | "command";
 
+/** Whether a code block's Run button may hand its text to the terminal. Withheld where no shell can be
+ * trusted to keep pasted lines from running. */
+export type CodeToTerminal = "offered" | "withheld";
+
 export interface PlatformInfo {
   windowControls: WindowControls;
   readyAt: ReadyAt;
   shortcuts: Shortcuts;
+  codeToTerminal: CodeToTerminal;
 }
 
 declare global {
@@ -24,7 +29,7 @@ declare global {
 }
 
 /** Windows sets no global, and neither do tests, a plain browser or Node, which has no window. */
-const WINDOWS: PlatformInfo = { windowControls: "drawn", readyAt: "frameStarted", shortcuts: "ctrl" };
+const WINDOWS: PlatformInfo = { windowControls: "drawn", readyAt: "frameStarted", shortcuts: "ctrl", codeToTerminal: "offered" };
 
 export function platformInfo(): PlatformInfo {
   return (typeof window === "undefined" ? undefined : window.__DRAGGY_PLATFORM__) ?? WINDOWS;

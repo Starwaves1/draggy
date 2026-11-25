@@ -220,7 +220,7 @@ describe("Composer queue editing", () => {
 
 describe("Return with Control on a Mac", () => {
   function renderOnMac(generating: boolean) {
-    window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command" };
+    window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command", codeToTerminal: "withheld" };
     const queue = queueFixture();
     const onSendMessage = vi.fn();
     render(

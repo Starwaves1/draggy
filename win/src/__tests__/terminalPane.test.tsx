@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
+import fs from "node:fs";
+import path from "node:path";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TerminalPane from "../terminal/TerminalPane";
 import { createDefaultDockLayout, terminalIdOf } from "../app/dockLayout";
 import { useShellTabs } from "../terminal/useShellTabs";
-import { allSessions, closeSession, resetSessions, sessionLabels, shellName } from "../terminal/terminalSessions";
-import { appendAgentBlock, finishAgentBlock, requestPrefill, resetTerminalBus, startAgentBlock } from "../terminal/terminalBus";
+import { allSessions, closeSession, prefillSession, resetSessions, sessionLabels, shellName } from "../terminal/terminalSessions";
+import { appendAgentBlock, finishAgentBlock, requestPrefill, resetTerminalBus, startAgentBlock, takePrefill } from "../terminal/terminalBus";
+import { CodeBlock } from "../chat/CodeBlock";
+import type { PlatformInfo } from "../platform/info";
 import { translations } from "../translations";
 
 /** Each shell is a dock tab. Opening one starts it in the project, a code block's command lands on a
@@ -72,7 +76,22 @@ afterEach(() => {
   resetSessions();
   resetTerminalBus();
   vi.unstubAllGlobals();
+  delete window.__DRAGGY_PLATFORM__;
 });
+
+// What the macOS shell hands the renderer, from the case its Rust test checks the boot script against.
+const FILE = path.resolve(import.meta.dirname, "../../../shared/fixtures/platform/info.json");
+const MACOS = (JSON.parse(fs.readFileSync(FILE, "utf8")) as { cases: { expected: PlatformInfo }[] }).cases[0].expected;
+
+/** A person's click: jsdom cannot make a trusted event, so the button's own handler gets one by hand. */
+function personClicks(element: HTMLElement) {
+  const button = element.closest("button") as HTMLButtonElement;
+  const key = Object.keys(button).find((name) => name.startsWith("__reactProps$")) as keyof HTMLButtonElement;
+  act(() => (button[key] as unknown as { onClick: (event: { isTrusted: boolean }) => void }).onClick({ isTrusted: true }));
+}
+
+/** Lets a prefill that slipped through open its shell and pass the 400 ms wait before it writes. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 500)));
 
 let messages: string[] = [];
 
@@ -135,6 +154,17 @@ describe("shell tabs", () => {
     expect(shellName("pwsh.exe")).toBe("Pwsh");
     expect(shellName("cmd")).toBe("CMD");
     expect(shellName("zsh")).toBe("Zsh");
+  });
+
+  it("names a Mac shell by the file its path ends in", async () => {
+    expect(shellName("/bin/zsh")).toBe("Zsh");
+    expect(shellName("/opt/homebrew/bin/fish")).toBe("Fish");
+    shell.open.mockImplementation(async () => ({ success: true, id: `pty-${++counter}`, shell: "/bin/zsh" }));
+    render(<Harness />);
+    fireEvent.click(screen.getByText("new shell"));
+    expect(await screen.findByText("Zsh")).toBeTruthy();
+    fireEvent.click(screen.getByText("new shell"));
+    expect(await screen.findByText("Zsh 2")).toBeTruthy();
   });
 
   it("shows output and keeps the shell until it is closed", async () => {
@@ -209,5 +239,57 @@ describe("shell tabs", () => {
     expect(screen.getByText("clean")).toBeTruthy();
     expect(screen.getByText("exit 0")).toBeTruthy();
     expect(screen.getByText("git status").closest("[data-status]")?.querySelector("textarea,input")).toBeNull();
+  });
+
+  it("writes a clicked block's exact text to the open shell on Windows", async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("new shell"));
+    await waitFor(() => expect(views).toHaveLength(1));
+
+    render(<CodeBlock language="bash" value={"npm test\n"} />);
+    personClicks(screen.getByText("Run in terminal"));
+    await waitFor(() => expect(shell.write).toHaveBeenCalledWith("pty-1", "npm test"));
+    cleanup();
+
+    render(<Harness />);
+    render(<CodeBlock language="sh" value={"echo a\necho b"} />);
+    personClicks(screen.getByText("Run in terminal"));
+    await waitFor(() => expect(shell.write).toHaveBeenCalledWith("pty-1", "\u001b[200~echo a\necho b\u001b[201~"));
+    expect(shell.write).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("shell tabs on macOS", () => {
+  beforeEach(() => {
+    window.__DRAGGY_PLATFORM__ = Object.freeze({ ...MACOS });
+  });
+
+  it("opens no shell and writes nothing for a request when none is open", async () => {
+    render(<Harness />);
+    for (const command of ["ls", "echo a\necho b"]) {
+      act(() => requestPrefill({ command, shell: "bash" }));
+      expect(takePrefill()).toBeNull();
+    }
+    await settle();
+
+    expect(shell.open).not.toHaveBeenCalled();
+    expect(shell.write).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId("tab")).toHaveLength(0);
+  });
+
+  it("writes nothing to an open shell, by request or directly", async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("new shell"));
+    await waitFor(() => expect(views).toHaveLength(1));
+
+    for (const command of ["ls", "echo a\necho b"]) {
+      act(() => requestPrefill({ command, shell: "bash" }));
+      act(() => requestPrefill({ command, shell: "pwsh" }));
+      expect(prefillSession("pty-1", command)).toBe(false);
+    }
+    await settle();
+
+    expect(shell.write).not.toHaveBeenCalled();
+    expect(shell.open).toHaveBeenCalledTimes(1);
   });
 });

@@ -212,17 +212,14 @@ async fn shell_open(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError>
         .filter(|shell| *shell != "default");
     let default_shell = option(options, "defaultShell").and_then(Value::as_str);
     let env = shells::Env::system();
-    let invocation = match shells::invocation(&env, "", requested, default_shell, false, &[]) {
+    let invocation = match shells::interactive(&env, requested, default_shell) {
         Ok(invocation) => invocation,
         Err(error) => return Ok(refused(&error)),
     };
-    let mut launch_env = shells::build_env(&invocation.env);
-    launch_env.insert("TERM".into(), "xterm-256color".into());
-    launch_env.insert("COLORTERM".into(), "truecolor".into());
-    let args = shells::interactive_args(&invocation.shell);
+    let launch_env = shells::terminal_env(&invocation.env);
     let launch = Launch {
         file: &invocation.file,
-        args: &args,
+        args: &invocation.args,
         cwd: &root,
         env: &launch_env,
         cols: clamp(option(options, "cols").and_then(Value::as_f64), 2, 500, 80),
