@@ -647,7 +647,7 @@ async fn sd_generate(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError
             free_vram_gb: free_vram,
             total_vram_gb: vram,
             loaded_llm_gb: loaded,
-            unified: false,
+            unified: crate::platform::sysinfo::unified_memory(),
             free_ram_gb: memory.free_bytes as f64 / gb,
             total_ram_gb: memory.total_bytes as f64 / gb,
             runner: runner.clone(),
