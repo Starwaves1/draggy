@@ -27,6 +27,7 @@ import BrowserPane from "../../browser/BrowserPane";
 import ExtensionsPanel from "../../extensions/ExtensionsPanel";
 import StatsPanel from "../../stats/StatsPanel";
 import { translations } from "../../translations";
+import { formatShortcut } from "../../platform/shortcuts";
 
 
 type GalleryLanguage = "en" | "fr" | "ru";
@@ -166,7 +167,7 @@ export default function ComponentGallery() {
             <Button variant="primary" size="dense">
               Dense Pill
             </Button>
-            <IconButton name="copy" label="Copy text" shortcut="Ctrl+C" />
+            <IconButton name="copy" label="Copy text" shortcut="Mod+C" />
             <IconButton name="arrow-clockwise" label="Refresh" variant="secondary" />
             <IconButton name="trash" label="Delete" variant="danger" />
           </div>
@@ -240,10 +241,10 @@ export default function ComponentGallery() {
               <span className="text-sm">{t.idle}</span>
             </div>
             <div className="flex items-center gap-2 ms-4">
-              <Kbd>Ctrl</Kbd>
-              <Kbd>Shift</Kbd>
+              <Kbd>{formatShortcut("Mod")}</Kbd>
+              <Kbd>{formatShortcut("Shift")}</Kbd>
               <Kbd>D</Kbd>
-              <Kbd>Esc</Kbd>
+              <Kbd>{formatShortcut("Esc")}</Kbd>
             </div>
           </div>
         </section>

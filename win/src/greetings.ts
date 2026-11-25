@@ -1,3 +1,5 @@
+import { formatShortcut } from "./platform/shortcuts";
+
 /** The line greeting an empty chat, picked from the chat's id so it holds still: a greeting, a fun
  * fact or a silly splash line. Keep them short: large type, and a long sentence wraps badly. */
 
@@ -40,7 +42,7 @@ export const GREETINGS: Record<string, string[]> = {
     "Also try touching grass!",
     "Made with love and llamas",
     "Hello, World!",
-    "Ctrl+Z is a superpower",
+    "Mod+Z is a superpower",
     "It's not a bug, it's a feature",
     "Have you tried turning it off?",
     "Powered by atoms!",
@@ -202,7 +204,7 @@ export const GREETINGS: Record<string, string[]> = {
     "Essayez aussi de toucher l'herbe !",
     "Fait avec amour et des lamas",
     "Bonjour, le monde !",
-    "Ctrl+Z est un super-pouvoir",
+    "Mod+Z est un super-pouvoir",
     "Pas un bug, une fonctionnalité",
     "Avez-vous essayé de redémarrer ?",
     "Propulsé par des électrons !",
@@ -364,7 +366,7 @@ export const GREETINGS: Record<string, string[]> = {
     "¡Prueba también a tocar césped!",
     "Hecho con amor y llamas",
     "¡Hola, mundo!",
-    "Ctrl+Z es un superpoder",
+    "Mod+Z es un superpoder",
     "No es un bug, es una función",
     "¿Probaste a reiniciarlo?",
     "¡Funciona con átomos!",
@@ -688,5 +690,6 @@ function scatter(seed: string): number {
  * the reader; a different chat gets a different one. */
 export function pickGreeting(language: string, seed: string): string {
   const pool = greetingsFor(language);
-  return pool[scatter(seed ?? "") % pool.length];
+  // One splash line names the undo key, so it is written like any shortcut and shown the platform's way.
+  return pool[scatter(seed ?? "") % pool.length].replace("Mod+Z", formatShortcut("Mod+Z"));
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { Dialog } from "./Dialog";
 import { Kbd } from "./Kbd";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export interface ShortcutsSheetProps {
   open: boolean;
@@ -10,7 +11,7 @@ export interface ShortcutsSheetProps {
 
 interface ShortcutItem {
   label: string;
-  keys: string[];
+  keys: Chord[];
 }
 
 interface ShortcutGroup {
@@ -21,48 +22,46 @@ interface ShortcutGroup {
 /** Shows the full keyboard map grouped by task, opened with Ctrl+/.
  * Uses standard modifier keys and platform conventions. */
 export function ShortcutsSheet({ open, onClose, t }: ShortcutsSheetProps) {
-  const mod = "Ctrl";
-
   const groups: ShortcutGroup[] = [
     {
       title: t("shortcutsSectionGeneral"),
       items: [
-        { label: t("commandPalette"), keys: [`${mod}+K`, `${mod}+Shift+P`] },
-        { label: t("keyboardShortcuts"), keys: [`${mod}+/`] },
-        { label: t("settings"), keys: [`${mod}+,`] },
-        { label: t("toggleSidebar"), keys: [`${mod}+B`] },
+        { label: t("commandPalette"), keys: ["Mod+K", "Mod+Shift+P"] },
+        { label: t("keyboardShortcuts"), keys: ["Mod+/"] },
+        { label: t("settings"), keys: ["Mod+,"] },
+        { label: t("toggleSidebar"), keys: ["Mod+B"] },
         { label: t("stopGenerating"), keys: ["Esc"] },
       ],
     },
     {
       title: t("shortcutsSectionNavigation"),
       items: [
-        { label: t("newDiscussion"), keys: [`${mod}+N`] },
-        { label: `${t("chatMode")} / ${t("codeMode")}`, keys: [`${mod}+Shift+X`] },
-        { label: t("nextSession"), keys: [`${mod}+Tab`] },
-        { label: t("previousSession"), keys: [`${mod}+Shift+Tab`] },
-        { label: t("viewMode"), keys: [`${mod}+O`] },
+        { label: t("newDiscussion"), keys: ["Mod+N"] },
+        { label: `${t("chatMode")} / ${t("codeMode")}`, keys: ["Mod+Shift+X"] },
+        { label: t("nextSession"), keys: ["Ctrl+Tab"] },
+        { label: t("previousSession"), keys: ["Ctrl+Shift+Tab"] },
+        { label: t("viewMode"), keys: ["Mod+O"] },
       ],
     },
     {
       title: t("shortcutsSectionPanes"),
       items: [
-        { label: t("projectFiles"), keys: [`${mod}+Shift+F`] },
-        { label: t("diffPane"), keys: [`${mod}+Shift+D`] },
-        { label: t("browser"), keys: [`${mod}+Shift+B`] },
-        { label: t("plan"), keys: [`${mod}+Shift+L`] },
-        { label: t("terminal"), keys: [`${mod}+Shift+T`] },
-        { label: t("sendToBackground"), keys: [`${mod}+Alt+B`] },
-        { label: t("closePane"), keys: [`${mod}+\\`] },
-        { label: t("talk"), keys: [`${mod}+Shift+Space`] },
+        { label: t("projectFiles"), keys: ["Mod+Shift+F"] },
+        { label: t("diffPane"), keys: ["Mod+Shift+D"] },
+        { label: t("browser"), keys: ["Mod+Shift+B"] },
+        { label: t("plan"), keys: ["Mod+Shift+L"] },
+        { label: t("terminal"), keys: ["Mod+Shift+T"] },
+        { label: t("sendToBackground"), keys: ["Mod+Alt+B"] },
+        { label: t("closePane"), keys: ["Mod+\\"] },
+        { label: t("talk"), keys: ["Mod+Shift+Space"] },
       ],
     },
     {
       title: t("shortcutsSectionComposer"),
       items: [
-        { label: t("permissionMode"), keys: [`${mod}+Shift+M`] },
-        { label: t("model"), keys: [`${mod}+Shift+I`] },
-        { label: t("effort"), keys: [`${mod}+Shift+E`] },
+        { label: t("permissionMode"), keys: ["Mod+Shift+M"] },
+        { label: t("model"), keys: ["Mod+Shift+I"] },
+        { label: t("effort"), keys: ["Mod+Shift+E"] },
         { label: t("mentionFiles"), keys: ["@"] },
       ],
     },
@@ -80,7 +79,7 @@ export function ShortcutsSheet({ open, onClose, t }: ShortcutsSheetProps) {
                   <span className="text-text-secondary truncate pe-2">{item.label}</span>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     {item.keys.map((k) => (
-                      <Kbd key={k}>{k}</Kbd>
+                      <Kbd key={k}>{formatShortcut(k)}</Kbd>
                     ))}
                   </div>
                 </div>

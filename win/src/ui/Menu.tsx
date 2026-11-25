@@ -3,6 +3,7 @@ import { Icon } from "./icons/Icon";
 import { Kbd } from "./Kbd";
 import { FLOAT_CLASSES, floatPosition, useDismiss, type PopoverAlign, type PopoverSide } from "./float";
 import type { TriggerProps } from "./Popover";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export type MenuEntry =
     | {
@@ -12,7 +13,7 @@ export type MenuEntry =
           /** One line under the label, for choices that need explaining (permission modes). */
           description?: React.ReactNode;
           icon?: React.ReactNode;
-          shortcut?: string;
+          shortcut?: Chord;
           /** Set for a choice in a group: renders a check and `menuitemradio`. */
           checked?: boolean;
           /** An on/off setting rather than a choice in a group: `menuitemcheckbox`. */
@@ -155,7 +156,7 @@ export function Menu({ trigger, items, label, align = "start", side = "bottom", 
                                         <span className="block text-[12px] leading-4 text-text-secondary">{item.description}</span>
                                     )}
                                 </span>
-                                {item.shortcut && <Kbd className="mt-0.5">{item.shortcut}</Kbd>}
+                                {item.shortcut && <Kbd className="mt-0.5">{formatShortcut(item.shortcut)}</Kbd>}
                                 {radio && (
                                     <span className="mt-0.5 w-4 flex-shrink-0">{item.checked && <Icon name="check" size={16} />}</span>
                                 )}

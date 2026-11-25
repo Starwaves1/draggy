@@ -34,6 +34,7 @@ import type {
 import { allowedEfforts, effectiveEffort, effortColor, EFFORT_ORDER, nextEffort } from "../ai/effort";
 import { EffortSlider } from "./EffortSlider";
 import { EFFORT_LABELS } from "../settings/pages";
+import { controlBelongsToSystem, formatShortcut, primaryModifierDown } from "../platform/shortcuts";
 
 const MAX_INPUT_HEIGHT = 200;
 const WEB_MODE_ORDER: AppSettings["webMode"][] = ["on", "off"];
@@ -313,7 +314,7 @@ export function Composer({
     // Claude Code's menu keys: Ctrl+Shift+M mode, Ctrl+Shift+E effort, Ctrl+Shift+I model.
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
-            if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey) return;
+            if (!primaryModifierDown(event) || !event.shiftKey || event.altKey) return;
             const key = event.key.toLowerCase();
             if (key === "e" && !thinkingUnavailable) {
                 event.preventDefault();
@@ -587,9 +588,9 @@ export function Composer({
                 )}
                 {queued && chat.isGenerating && (
                     <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12px] text-text-secondary">
-                        <span className="inline-flex items-center gap-1.5"><Kbd>Enter</Kbd>{t("queueKeyNext")}</span>
-                        <span className="inline-flex items-center gap-1.5"><Kbd>Ctrl+Enter</Kbd>{t("queueKeyQueue")}</span>
-                        <span className="inline-flex items-center gap-1.5"><Kbd>Ctrl+Shift+Enter</Kbd>{t("queueKeyInterrupt")}</span>
+                        <span className="inline-flex items-center gap-1.5"><Kbd>{formatShortcut("Enter")}</Kbd>{t("queueKeyNext")}</span>
+                        <span className="inline-flex items-center gap-1.5"><Kbd>{formatShortcut("Mod+Enter")}</Kbd>{t("queueKeyQueue")}</span>
+                        <span className="inline-flex items-center gap-1.5"><Kbd>{formatShortcut("Mod+Shift+Enter")}</Kbd>{t("queueKeyInterrupt")}</span>
                     </p>
                 )}
 
@@ -774,7 +775,9 @@ export function Composer({
                                 setEditing({ id: last.id, text: last.content });
                                 return;
                             }
-                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            // Control+Return on a Mac is not Return, so it neither sends nor steers.
+                            if (e.key === "Enter" && controlBelongsToSystem(e)) return;
+                            if (e.key === "Enter" && primaryModifierDown(e)) {
                                 e.preventDefault();
                                 if (chat.isGenerating) sendWhileGenerating(e.shiftKey ? "now" : "queue");
                                 else handleSubmit();
@@ -850,7 +853,7 @@ export function Composer({
                                                     t(EFFORT_LABELS[settings.effort])
                                                 )
                                             }
-                                            title={`${t("effort")}: ${t(EFFORT_LABELS[settings.effort])} (Ctrl+Shift+E)${sentNote}`}
+                                            title={`${t("effort")}: ${t(EFFORT_LABELS[settings.effort])} (${formatShortcut("Mod+Shift+E")})${sentNote}`}
                                         />
                                     )}
                                 >
@@ -885,7 +888,7 @@ export function Composer({
                                                 modelLabel(model)
                                             )
                                         }
-                                        title={`${modelProvider ? `${modelProvider.label} · ` : ""}${displayModelName(model)} (Ctrl+Shift+I)`}
+                                        title={`${modelProvider ? `${modelProvider.label} · ` : ""}${displayModelName(model)} (${formatShortcut("Mod+Shift+I")})`}
                                     />
                                 )}
                             >

@@ -12,6 +12,7 @@ import { isDefault, workspaceLabel } from "../workspaces";
 import type { AppMode } from "./modes";
 import type { ChatSession, Workspace } from "../types";
 import type { SettingsTab } from "../settings/pages";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export interface SidebarProps {
   mode: AppMode;
@@ -44,7 +45,7 @@ const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 360;
 const DEFAULT_SIDEBAR_WIDTH = 264;
 
-function NavRow({ icon, label, shortcut, onClick }: { icon: IconName; label: string; shortcut?: string; onClick: () => void }) {
+function NavRow({ icon, label, shortcut, onClick }: { icon: IconName; label: string; shortcut?: Chord; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -55,7 +56,7 @@ function NavRow({ icon, label, shortcut, onClick }: { icon: IconName; label: str
         <Icon name={icon} size={16} className="shrink-0 text-text-secondary" />
         <span className="truncate">{label}</span>
       </span>
-      {shortcut && <span className="text-[11px] text-text-tertiary shrink-0">{shortcut}</span>}
+      {shortcut && <span className="text-[11px] text-text-tertiary shrink-0">{formatShortcut(shortcut)}</span>}
     </button>
   );
 }
@@ -259,7 +260,7 @@ export function Sidebar({
               id: "rename",
               label: t("rename"),
               icon: <Icon name="pencil-simple" size={16} />,
-              shortcut: "F2",
+              shortcut: "F2" as const,
               onSelect: () => startRename(session),
             },
           ]
@@ -314,7 +315,7 @@ export function Sidebar({
         id: "delete",
         label: t("delete"),
         icon: <Icon name="trash" size={16} />,
-        shortcut: "Del",
+        shortcut: "Del" as const,
         danger: true,
         onSelect: () => setConfirmDeleteId(session.id),
       },
@@ -445,10 +446,10 @@ export function Sidebar({
               <NavRow
                 icon="plus"
                 label={mode === "code" ? (codeHome ? t("newProject") : t("newSession")) : t("newDiscussion")}
-                shortcut="Ctrl+N"
+                shortcut="Mod+N"
                 onClick={mode === "code" && codeHome ? onNewProject : onNewChat}
               />
-              {onOpenPalette && <NavRow icon="magnifying-glass" label={t("search")} shortcut="Ctrl+K" onClick={onOpenPalette} />}
+              {onOpenPalette && <NavRow icon="magnifying-glass" label={t("search")} shortcut="Mod+K" onClick={onOpenPalette} />}
               {mode === "chat" && onViewTalk && <NavRow icon="waveform" label={t("talk")} onClick={onViewTalk} />}
             </div>
           </div>
@@ -615,14 +616,14 @@ export function Sidebar({
             <button
               onClick={() => onOpenSettings("general")}
               aria-label={t("settings")}
-              title={`${t("settings")} (Ctrl+,)`}
+              title={`${t("settings")} (${formatShortcut("Mod+,")})`}
               className="w-full flex items-center justify-between p-2 rounded-sm text-[13px] text-text-primary hover:bg-surface-raised transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
                 <Icon name="gear-six" size={16} className="text-text-secondary" />
                 <span>{t("settings")}</span>
               </div>
-              <span className="text-[11px] text-text-tertiary">Ctrl+,</span>
+              <span className="text-[11px] text-text-tertiary">{formatShortcut("Mod+,")}</span>
             </button>
           </div>
         </div>

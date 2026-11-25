@@ -28,6 +28,7 @@ import { stepView } from "./stepView";
 import { TailBox } from "./LiveArgs";
 import { StepLine, linkClass } from "./StepLine";
 import type { ApprovalAnswer, SearchStep } from "../types";
+import { formatShortcut } from "../platform/shortcuts";
 
 /** A written file off the rail draws its own mark: the spark while it is written. */
 function StepMark({ active }: { active: boolean }) {
@@ -545,7 +546,7 @@ export function WorkBlock({
         <button
           type="button"
           onClick={() => void window.draggy?.commands?.detach(step.runId as string)}
-          title={`${t("sendToBackground")} (Ctrl+Alt+B)`}
+          title={`${t("sendToBackground")} (${formatShortcut("Mod+Alt+B")})`}
           className={linkClass}
         >
           {t("sendToBackground")}

@@ -1,5 +1,6 @@
 import React from "react";
 import { Icon, type IconName } from "./icons/Icon";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export type IconButtonVariant = "ghost" | "secondary" | "primary" | "danger";
 export type IconButtonSize = "default" | "dense" | "sm";
@@ -7,7 +8,7 @@ export type IconButtonSize = "default" | "dense" | "sm";
 export interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
     name: IconName;
     label: string;
-    shortcut?: string;
+    shortcut?: Chord;
     size?: IconButtonSize;
     variant?: IconButtonVariant;
     filled?: boolean;
@@ -44,7 +45,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
     },
     ref,
 ) {
-    const accessibleTitle = shortcut ? `${label} (${shortcut})` : label;
+    const accessibleTitle = shortcut ? `${label} (${formatShortcut(shortcut)})` : label;
     const { btn, iconSize } = SIZE_CLASSES[size];
 
     return (

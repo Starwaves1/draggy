@@ -1,9 +1,10 @@
 import React from "react";
 import { Kbd } from "./Kbd";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export interface TooltipProps {
     label: React.ReactNode;
-    shortcut?: string;
+    shortcut?: Chord;
     side?: "top" | "bottom";
     align?: "center" | "start" | "end";
     children: React.ReactNode;
@@ -23,7 +24,7 @@ export function Tooltip({ label, shortcut, side = "bottom", align = "center", ch
                 className={`tip ${ALIGN[align]} ${side === "top" ? "bottom-full mb-1.5" : "top-full mt-1.5"} inline-flex items-center gap-2 rounded-xs bg-action-bg px-2 py-1 text-[12px] leading-4 text-action-fg`}
             >
                 {label}
-                {shortcut && <Kbd className="!bg-transparent !border-action-fg/30 !text-action-fg">{shortcut}</Kbd>}
+                {shortcut && <Kbd className="!bg-transparent !border-action-fg/30 !text-action-fg">{formatShortcut(shortcut)}</Kbd>}
             </span>
         </span>
     );
