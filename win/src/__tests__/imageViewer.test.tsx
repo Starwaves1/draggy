@@ -25,7 +25,7 @@ describe("image viewer under the window controls", () => {
   });
 
   it("moves its bar clear of the traffic lights when the system draws them", () => {
-    window.__DRAGGY_PLATFORM__ = Object.freeze({ windowControls: "native" as const, readyAt: "frameCommitted" as const, shortcuts: "command" as const });
+    window.__DRAGGY_PLATFORM__ = Object.freeze({ windowControls: "native" as const, readyAt: "frameCommitted" as const, shortcuts: "command" as const, codeToTerminal: "withheld" as const });
     expect(openViewer().classList.contains("traffic-lights")).toBe(true);
   });
 });

@@ -3,9 +3,9 @@
   "description": "The PlatformInfo a shell sets as window.__DRAGGY_PLATFORM__ before the renderer's first frame. win/src-tauri/src/platform/macos/window.rs builds it and win/src/platform/info.ts reads it",
   "cases": [
     {
-      "name": "the macOS shell leaves the window controls to the system, shows its window the instant the page is ready and leads shortcuts with Command",
+      "name": "the macOS shell leaves the window controls to the system, shows its window the instant the page is ready, leads shortcuts with Command and keeps code blocks out of the terminal",
       "input": { "shell": "macos" },
-      "expected": { "windowControls": "native", "readyAt": "frameCommitted", "shortcuts": "command" }
+      "expected": { "windowControls": "native", "readyAt": "frameCommitted", "shortcuts": "command", "codeToTerminal": "withheld" }
     }
   ]
 }

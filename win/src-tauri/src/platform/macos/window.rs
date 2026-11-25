@@ -49,11 +49,15 @@ fn on_ns_window(
     })
 }
 
-/// Tells the renderer, before its first frame, that the system draws the window controls, that
-/// `reveal` shows the window the instant the page is ready and that Command leads shortcuts.
+/// Tells the renderer, before its first frame, who draws the window controls, when `reveal` shows the
+/// window, which key leads shortcuts and that no code block goes to the terminal.
 fn boot_script() -> String {
-    let info =
-        json!({ "windowControls": "native", "readyAt": "frameCommitted", "shortcuts": "command" });
+    let info = json!({
+        "windowControls": "native",
+        "readyAt": "frameCommitted",
+        "shortcuts": "command",
+        "codeToTerminal": "withheld",
+    });
     format!("window.__DRAGGY_PLATFORM__ = Object.freeze({info});")
 }
 
