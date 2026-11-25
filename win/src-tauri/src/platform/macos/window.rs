@@ -49,9 +49,10 @@ fn on_ns_window(
     })
 }
 
-/// Tells the renderer, before its first frame, that the system draws the window controls.
+/// Tells the renderer, before its first frame, that the system draws the window controls and that
+/// `reveal` shows the window the instant the page is ready.
 fn boot_script() -> String {
-    let info = json!({ "windowControls": "native" });
+    let info = json!({ "windowControls": "native", "readyAt": "frameCommitted" });
     format!("window.__DRAGGY_PLATFORM__ = Object.freeze({info});")
 }
 
