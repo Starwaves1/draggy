@@ -12,6 +12,7 @@ pub mod legacy_local_storage;
 pub mod mcp;
 pub mod models;
 pub mod paths;
+pub mod platform;
 pub mod pricing;
 pub mod proc_log;
 pub mod quit;
@@ -160,8 +161,6 @@ pub(crate) fn build_main_window(app: &tauri::AppHandle, setup: bool) -> tauri::R
             .inner_size(1200.0, 800.0)
             .min_inner_size(min_width, min_height)
             .data_directory(profile)
-            // Undecorated: the renderer's TitleBar draws the caption buttons. Edge resize and snap stay on.
-            .decorations(false)
             .shadow(true)
             .visible(false)
             .on_navigation(move |url| {
@@ -178,7 +177,7 @@ pub(crate) fn build_main_window(app: &tauri::AppHandle, setup: bool) -> tauri::R
     if let Some(script) = &import {
         window = window.initialization_script(script);
     }
-    window.build().map(|_| ())
+    platform::window::main_chrome(window).build().map(|_| ())
 }
 
 /// Points the open main window at first-run setup: a reload with the setup query, then shown and focused.
