@@ -1,6 +1,5 @@
 import { logSwallow } from "../logger";
 import { createTerminalView, type TerminalView } from "./xtermView";
-import { promptText } from "./terminalBus";
 
 /** The open terminals, kept outside the pane so switching to another dock pane and back does not
  * close a shell. Each one is an xterm on its own element that the pane attaches where it shows. */
@@ -11,6 +10,7 @@ export interface TerminalSession {
   shell: string;
   exited: boolean;
   exitCode?: number;
+  bracketedPaste: boolean;
   host: HTMLElement;
   view: TerminalView | null;
   queue: string[];
@@ -119,7 +119,7 @@ export async function openSession(workspaceId: string, shell: string | undefined
   const id = result.id;
   const host = document.createElement("div");
   host.className = "h-full w-full";
-  const session: TerminalSession = { id, workspaceId, shell: result.shell ?? shell ?? "shell", exited: false, host, view: null, queue: [] };
+  const session: TerminalSession = { id, workspaceId, shell: result.shell ?? shell ?? "shell", exited: false, bracketedPaste: false, host, view: null, queue: [] };
   sessions = [...sessions, session];
   active.set(workspaceId, id);
   listen();
@@ -128,6 +128,10 @@ export async function openSession(workspaceId: string, shell: string | undefined
   createTerminalView(host, {
     onInput: (data) => bridge.write(id, data),
     onLink: (uri) => void window.open(uri, "_blank"),
+    onPasteMode: (on) => {
+      session.bracketedPaste = on;
+      notify();
+    },
   })
     .then((view) => {
       if (!byId(id)) {
@@ -170,18 +174,33 @@ export function focusSession(id: string): void {
   byId(id)?.view?.focus();
 }
 
-/** Puts text on the prompt without pressing Enter. A multi-line command goes in as a paste, so no
- * line runs before the person has read it. */
-export function prefillSession(id: string, command: string): boolean {
+/** Writes what `planPrefill` chose to a prompt and focuses it. */
+export function prefillSession(id: string, data: string): boolean {
   const session = byId(id);
   const bridge = api();
   if (!session || !bridge || session.exited) return false;
-
-  const lines = String(command).split("\n").map(promptText).filter(Boolean);
-  if (!lines.length) return false;
-  bridge.write(id, lines.length === 1 ? lines[0] : `\u001b[200~${lines.join("\n")}\u001b[201~`);
+  bridge.write(id, data);
   session.view?.focus();
   return true;
+}
+
+/** Resolves true once the shell turns bracketed paste on, false when it exits, closes or `ms` pass first. */
+export function waitForPaste(id: string, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const finish = (on: boolean) => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(on);
+    };
+    const check = () => {
+      const session = byId(id);
+      if (!session || session.exited) finish(false);
+      else if (session.bracketedPaste) finish(true);
+    };
+    const timer = setTimeout(() => finish(false), ms);
+    const unsubscribe = subscribeSessions(check);
+    check();
+  });
 }
 
 export function resetSessions(): void {

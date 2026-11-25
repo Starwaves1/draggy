@@ -18,6 +18,8 @@ export interface TerminalViewOptions {
   onInput: (data: string) => void;
   /** Only addresses with these schemes are followed. */
   onLink: (uri: string) => void;
+  /** Called when the shell turns bracketed paste on or off. */
+  onPasteMode?: (on: boolean) => void;
   fontSize?: number;
 }
 
@@ -49,8 +51,15 @@ export async function createTerminalView(container: HTMLElement, options: Termin
   terminal.attachCustomKeyEventHandler((event) => event.isTrusted);
   terminal.onData((data) => options.onInput(data));
 
+  let pasteMode = false;
+  const readPasteMode = () => {
+    if (terminal.modes.bracketedPasteMode === pasteMode) return;
+    pasteMode = terminal.modes.bracketedPasteMode;
+    options.onPasteMode?.(pasteMode);
+  };
+
   return {
-    write: (data) => terminal.write(data),
+    write: (data) => terminal.write(data, readPasteMode),
     focus: () => terminal.focus(),
     fit: () => {
       try {
