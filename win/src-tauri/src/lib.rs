@@ -81,6 +81,7 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     };
     let data_dir = app.state::<AppState>().storage.data_dir().to_path_buf();
     paint_and_show(&window, &data_dir)?;
+    platform::window::reveal(&window)?;
     window.set_focus()
 }
 
@@ -177,7 +178,8 @@ pub(crate) fn build_main_window(app: &tauri::AppHandle, setup: bool) -> tauri::R
     if let Some(script) = &import {
         window = window.initialization_script(script);
     }
-    platform::window::main_chrome(window).build().map(|_| ())
+    let window = platform::window::main_chrome(window).build()?;
+    platform::window::paint_unseen(&window)
 }
 
 /// Points the open main window at first-run setup: a reload with the setup query, then shown and focused.

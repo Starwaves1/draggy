@@ -1,6 +1,8 @@
+use objc2::msg_send;
+use objc2::runtime::AnyObject;
 use serde_json::json;
 use tauri::webview::WebviewWindowBuilder;
-use tauri::{Manager, Runtime, TitleBarStyle};
+use tauri::{Manager, Runtime, TitleBarStyle, WebviewWindow};
 
 /// The system's traffic lights over the page's own 40px title bar, which runs under a hidden native one.
 pub fn main_chrome<'a, R: Runtime, M: Manager<R>>(
@@ -11,6 +13,40 @@ pub fn main_chrome<'a, R: Runtime, M: Manager<R>>(
         .title_bar_style(TitleBarStyle::Overlay)
         .hidden_title(true)
         .initialization_script(boot_script())
+}
+
+/// WKWebView paints nothing in an off-screen window, so the main window waits on screen, transparent and
+/// click-through, until its first frame.
+pub fn paint_unseen(window: &WebviewWindow) -> tauri::Result<()> {
+    window.set_ignore_cursor_events(true)?;
+    on_ns_window(window, |ns| {
+        // SAFETY: NSWindow messages, sent on the main thread while the window exists.
+        unsafe {
+            let _: () = msg_send![ns, setAlphaValue: 0.0_f64];
+            let _: () = msg_send![ns, orderFrontRegardless];
+        }
+    })
+}
+
+/// Undoes `paint_unseen` once the window is shown for real.
+pub fn reveal(window: &WebviewWindow) -> tauri::Result<()> {
+    on_ns_window(window, |ns| {
+        // SAFETY: as in paint_unseen.
+        unsafe {
+            let _: () = msg_send![ns, setAlphaValue: 1.0_f64];
+        }
+    })?;
+    window.set_ignore_cursor_events(false)
+}
+
+fn on_ns_window(
+    window: &WebviewWindow,
+    action: impl FnOnce(&AnyObject) + Send + 'static,
+) -> tauri::Result<()> {
+    window.with_webview(move |webview| {
+        // SAFETY: Tauri calls this on the main thread while the window lives; the pointer is its NSWindow.
+        action(unsafe { &*webview.ns_window().cast::<AnyObject>() })
+    })
 }
 
 /// Tells the renderer, before its first frame, that the system draws the window controls.
