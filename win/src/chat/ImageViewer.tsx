@@ -8,6 +8,7 @@ import {
 import { createPortal } from "react-dom";
 import { Icon } from "../ui";
 import { clampScale, wheelFactor } from "../ui/imageView";
+import { platformInfo } from "../platform/info";
 
 /** A picture at full screen. It grows out of the thumbnail that opened it and shrinks back into it.
  * The wheel zooms toward the cursor from 1% to 800% of the picture's own size, and a drag moves it. */
@@ -117,6 +118,8 @@ export function ImageViewer({ image, origin, onClose, t }: ImageViewerProps) {
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState(false);
   const source = () => origin.querySelector("img") ?? origin;
+  // The system's traffic lights draw over this full-window overlay, so its bar starts after them.
+  const trafficLights = platformInfo().windowControls === "native";
   const fitZoom = rect.w / size().width;
   const [view, setView] = useState<View | null>(null);
   const [eased, setEased] = useState(false);
@@ -278,7 +281,7 @@ export function ImageViewer({ image, origin, onClose, t }: ImageViewerProps) {
   return createPortal(
     <div
       ref={rootRef}
-      className={`img-viewer${shown ? " show" : ""}`}
+      className={`img-viewer${trafficLights ? " traffic-lights" : ""}${shown ? " show" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={image.title}

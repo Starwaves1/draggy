@@ -113,7 +113,7 @@ export function TrafficLightSpace() {
   const native = platformInfo().windowControls === "native";
   const fullscreen = useWindowState("fullscreen", native);
   if (!native || fullscreen) return null;
-  return <div data-tauri-drag-region data-testid="traffic-light-space" className="h-10 w-[68px] shrink-0" />;
+  return <div data-tauri-drag-region data-testid="traffic-light-space" className="h-10 w-[var(--traffic-light-space)] shrink-0" />;
 }
 
 /** A 40px drag strip with the caption buttons, for screens that have no TitleBar. */
