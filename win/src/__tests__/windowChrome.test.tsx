@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import TitleBar from "../app/TitleBar";
 import { WindowBar } from "../app/WindowControls";
+import type { PlatformInfo } from "../platform/info";
 import { translations } from "../translations";
 
 const win = vi.hoisted(() => ({
@@ -26,8 +29,12 @@ function captionButtons() {
   return CAPTIONS.filter((name) => screen.queryByRole("button", { name }));
 }
 
+// What the macOS shell hands the renderer, from the case its Rust test checks the boot script against.
+const FILE = path.resolve(import.meta.dirname, "../../../shared/fixtures/platform/info.json");
+const MACOS = (JSON.parse(fs.readFileSync(FILE, "utf8")) as { cases: { expected: PlatformInfo }[] }).cases[0].expected;
+
 function nativeControls() {
-  window.__DRAGGY_PLATFORM__ = Object.freeze({ windowControls: "native" as const });
+  window.__DRAGGY_PLATFORM__ = Object.freeze({ ...MACOS });
 }
 
 beforeEach(() => {

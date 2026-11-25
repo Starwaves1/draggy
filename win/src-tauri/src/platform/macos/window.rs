@@ -31,6 +31,11 @@ mod tests {
             .and_then(|rest| rest.strip_suffix(");"))
             .expect("a frozen assignment to window.__DRAGGY_PLATFORM__");
         let info: serde_json::Value = serde_json::from_str(json).unwrap();
-        assert_eq!(info, json!({ "windowControls": "native" }));
+        // The renderer's tests read the same case, so a rename on either side fails a suite.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../shared/fixtures/platform/info.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(info, fixture["cases"][0]["expected"]);
     }
 }
