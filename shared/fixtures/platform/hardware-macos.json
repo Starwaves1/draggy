@@ -1,0 +1,166 @@
+{
+  "area": "platform",
+  "description": "macOS hardware probe output the Tauri shell parses: `sysctl hw.memsize kern.memorystatus_level` (memory, bytes), `sysctl machdep.cpu.brand_string` (cpu), `system_profiler -json SPDisplaysDataType` (gpu) and `df -k -P` (df, bytes). Real outputs with identifiers removed; null is no answer",
+  "cases": [
+    {
+      "name": "memory on an Apple M5 Mac",
+      "input": {
+        "op": "memory",
+        "text": "hw.memsize: 25769803776\nkern.memorystatus_level: 50\n"
+      },
+      "expected": {
+        "totalBytes": 25769803776,
+        "freeBytes": 12884901888
+      }
+    },
+    {
+      "name": "processor name on an Apple M5 Mac",
+      "input": {
+        "op": "cpu",
+        "text": "machdep.cpu.brand_string: Apple M5\n"
+      },
+      "expected": "Apple M5"
+    },
+    {
+      "name": "graphics name on an Apple M5 Mac",
+      "input": {
+        "op": "gpu",
+        "text": "{\n  \"SPDisplaysDataType\": [\n    {\n      \"_name\": \"Apple M5\",\n      \"spdisplays_mtlgpufamilysupport\": \"spdisplays_metal4\",\n      \"spdisplays_ndrvs\": [\n        {\n          \"_name\": \"Color LCD\",\n          \"_spdisplays_pixels\": \"3024 x 1964\",\n          \"_spdisplays_resolution\": \"1512 x 982 @ 120.00Hz\",\n          \"spdisplays_ambient_brightness\": \"spdisplays_yes\",\n          \"spdisplays_connection_type\": \"spdisplays_internal\",\n          \"spdisplays_display_type\": \"spdisplays_built-in-liquid-retina-xdr\",\n          \"spdisplays_main\": \"spdisplays_yes\",\n          \"spdisplays_mirror\": \"spdisplays_off\",\n          \"spdisplays_online\": \"spdisplays_yes\",\n          \"spdisplays_pixelresolution\": \"spdisplays_3024x1964Retina\"\n        }\n      ],\n      \"spdisplays_vendor\": \"sppci_vendor_Apple\",\n      \"sppci_bus\": \"spdisplays_builtin\",\n      \"sppci_cores\": \"10\",\n      \"sppci_device_type\": \"spdisplays_gpu\",\n      \"sppci_model\": \"Apple M5\"\n    }\n  ]\n}"
+      },
+      "expected": "Apple M5"
+    },
+    {
+      "name": "home volume on an Apple M5 Mac",
+      "input": {
+        "op": "df",
+        "text": "Filesystem   1024-blocks      Used Available Capacity  Mounted on\n/dev/disk3s5   976490576 488245288 488245288    50%    /System/Volumes/Data\n"
+      },
+      "expected": {
+        "sizeBytes": 999926349824,
+        "freeBytes": 499963174912
+      }
+    },
+    {
+      "name": "memory on the 4 GB Tart guest",
+      "input": {
+        "op": "memory",
+        "text": "hw.memsize: 4294967296\nkern.memorystatus_level: 68\n"
+      },
+      "expected": {
+        "totalBytes": 4294967296,
+        "freeBytes": 2920577761
+      }
+    },
+    {
+      "name": "processor name on the 4 GB Tart guest",
+      "input": {
+        "op": "cpu",
+        "text": "machdep.cpu.brand_string: Apple M5 (Virtual)\n"
+      },
+      "expected": "Apple M5 (Virtual)"
+    },
+    {
+      "name": "the 4 GB Tart guest lists no graphics adapter",
+      "input": {
+        "op": "gpu",
+        "text": "{\n  \"SPDisplaysDataType\": []\n}"
+      },
+      "expected": null
+    },
+    {
+      "name": "home volume on the 4 GB Tart guest",
+      "input": {
+        "op": "df",
+        "text": "Filesystem   1024-blocks     Used Available Capacity  Mounted on\n/dev/disk2s5    48316088 10765504  16798584    40%    /System/Volumes/Data\n"
+      },
+      "expected": {
+        "sizeBytes": 49475674112,
+        "freeBytes": 17201750016
+      }
+    },
+    {
+      "name": "memory without the availability level keeps the total",
+      "input": {
+        "op": "memory",
+        "text": "hw.memsize: 17179869184\n"
+      },
+      "expected": {
+        "totalBytes": 17179869184,
+        "freeBytes": 0
+      }
+    },
+    {
+      "name": "memory sysctl that failed reads as zeros",
+      "input": {
+        "op": "memory",
+        "text": ""
+      },
+      "expected": {
+        "totalBytes": 0,
+        "freeBytes": 0
+      }
+    },
+    {
+      "name": "no processor name reads as unknown",
+      "input": {
+        "op": "cpu",
+        "text": "sysctl: unknown oid 'machdep.cpu.brand_string'\n"
+      },
+      "expected": null
+    },
+    {
+      "name": "a software renderer is not named and the next adapter is",
+      "input": {
+        "op": "gpu",
+        "text": "{\"SPDisplaysDataType\": [{\"_name\": \"Microsoft Basic Render Driver\"}, {\"_name\": \"kHW_AMDRadeonPro5500MItem\", \"sppci_model\": \"AMD Radeon Pro 5500M\"}]}"
+      },
+      "expected": "AMD Radeon Pro 5500M"
+    },
+    {
+      "name": "an entry without a model falls back to its name",
+      "input": {
+        "op": "gpu",
+        "text": "{\"SPDisplaysDataType\": [{\"_name\": \"Apple M2 Pro\"}]}"
+      },
+      "expected": "Apple M2 Pro"
+    },
+    {
+      "name": "graphics output that is not JSON names nothing",
+      "input": {
+        "op": "gpu",
+        "text": "system_profiler: timed out"
+      },
+      "expected": null
+    },
+    {
+      "name": "a mount point with spaces still parses",
+      "input": {
+        "op": "df",
+        "text": "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk5s1 1000000 250000 750000 25% /Volumes/Model Drive\n"
+      },
+      "expected": {
+        "sizeBytes": 1024000000,
+        "freeBytes": 768000000
+      }
+    },
+    {
+      "name": "a filesystem name with spaces still parses",
+      "input": {
+        "op": "df",
+        "text": "Filesystem 1024-blocks Used Available Capacity Mounted on\nmap auto_home 0 0 0 100% /System/Volumes/Data/home\n"
+      },
+      "expected": {
+        "sizeBytes": 0,
+        "freeBytes": 0
+      }
+    },
+    {
+      "name": "df that failed reads as no answer",
+      "input": {
+        "op": "df",
+        "text": "df: /nowhere: No such file or directory\n"
+      },
+      "expected": null
+    }
+  ]
+}

@@ -3,9 +3,9 @@
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use self::macos::window;
+pub use self::macos::{sysinfo, window};
 
 #[cfg(not(target_os = "macos"))]
 mod windows;
 #[cfg(not(target_os = "macos"))]
-pub use self::windows::window;
+pub use self::windows::{sysinfo, window};

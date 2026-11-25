@@ -125,7 +125,7 @@ pub fn now_ms() -> i64 {
 
 impl Engines {
     pub fn new(user_data: &Path) -> Self {
-        let home = std::env::var("USERPROFILE").unwrap_or_default();
+        let home = crate::platform::sysinfo::probe_home();
         let platform = host_platform();
         let probe = HardwareProbe::new(
             platform.os,
@@ -218,20 +218,25 @@ impl Engines {
                 } else {
                     "x64"
                 };
+                let unified = crate::platform::sysinfo::unified_memory();
+                let mut value = json!({
+                    "cpu": cpu,
+                    "ram": ram,
+                    "vram": vram,
+                    "gpu": gpu,
+                    "platform": crate::platform::sysinfo::NODE_PLATFORM,
+                    "arch": arch,
+                });
+                if unified {
+                    value["unifiedMemory"] = json!(true);
+                }
                 Specs {
-                    value: json!({
-                        "cpu": cpu,
-                        "ram": ram,
-                        "vram": vram,
-                        "gpu": gpu,
-                        "platform": "win32",
-                        "arch": arch,
-                    }),
+                    value,
                     typed: HardwareSpecs {
                         cpu: Some(cpu),
                         gpu,
                         vram_gb: vram,
-                        unified_memory: false,
+                        unified_memory: unified,
                     },
                 }
             })
