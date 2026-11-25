@@ -3,6 +3,7 @@ import { Icon, type IconName } from "../icons/Icon";
 import { IconButton } from "../IconButton";
 import { PaneHeader } from "./PaneHeader";
 import type { DockLayout, PaneId } from "../../app/dockLayout";
+import { primaryModifierDown } from "../../platform/shortcuts";
 
 export interface DockProps {
   layout: DockLayout;
@@ -61,7 +62,7 @@ export function Dock({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "\\" && active) {
+      if (primaryModifierDown(e) && e.key === "\\" && active) {
         e.preventDefault();
         onClosePane(active);
       }

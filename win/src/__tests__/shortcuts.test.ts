@@ -82,3 +82,37 @@ describe("the primary modifier", () => {
     expect(primaryModifierDown(keys(false, false))).toBe(false);
   });
 });
+
+// Source files that may name the Ctrl key: the module that writes it, and comments.
+const SRC = path.resolve(import.meta.dirname, "..");
+
+function sourceFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "__tests__" ? [] : sourceFiles(full);
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
+  });
+}
+
+function code(file: string): string {
+  return fs
+    .readFileSync(file, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
+describe("one way to write and read a shortcut", () => {
+  const files = sourceFiles(SRC).filter((file) => !file.endsWith(path.join("platform", "shortcuts.ts")));
+
+  it("labels name the primary modifier as Mod, so a Mac can show Command", () => {
+    // Ctrl+Tab is the one chord that is Control on every platform.
+    const offenders = files.filter((file) => /Ctrl\+(?!(Shift\+)?Tab\b)/.test(code(file)));
+    expect(offenders.map((file) => path.relative(SRC, file))).toEqual([]);
+  });
+
+  it("handlers ask for the primary modifier instead of testing Ctrl and the Windows key", () => {
+    const pair = /\w+\.ctrlKey \|\| \w+\.metaKey(?! \|\|)|!\w+\.ctrlKey && !\w+\.metaKey/;
+    const offenders = files.filter((file) => pair.test(code(file)));
+    expect(offenders.map((file) => path.relative(SRC, file))).toEqual([]);
+  });
+});

@@ -21,6 +21,7 @@ import type {
   InstalledSkill,
   PermissionMode,
 } from "./types";
+import { primaryModifierDown } from "./platform/shortcuts";
 
 const NO_SKILLS: InstalledSkill[] = [];
 
@@ -199,7 +200,7 @@ export default function ChatScreen({
         if (chat.isGenerating && !event.defaultPrevented) onStopGeneration();
         return;
       }
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (!primaryModifierDown(event)) return;
       const key = event.key.toLowerCase();
       if (key === "n") {
         event.preventDefault();

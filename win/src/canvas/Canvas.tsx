@@ -31,6 +31,7 @@ import {
   MARKDOWN_COMPONENTS,
   REHYPE_PLUGINS,
 } from "../chat/markdown";
+import { primaryModifierDown } from "../platform/shortcuts";
 
 const LINE_HEIGHT = 20;
 const AUTOSAVE_MS = 800;
@@ -175,7 +176,7 @@ export default function Canvas({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    if (primaryModifierDown(event) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       void save();
       return;

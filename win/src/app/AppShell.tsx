@@ -81,6 +81,7 @@ import { sameGeneration, startingEffort, useChatGeneration, type Generation } fr
 import { useImageEngine } from "../images/useImageEngine";
 import { fillComposer } from "../chat/mentions";
 import { CrashNotice } from "../CrashNotice";
+import { primaryModifierDown } from "../platform/shortcuts";
 
 export type ViewMode = "chat" | "files" | "talk" | "settings";
 
@@ -473,7 +474,7 @@ export default function AppShell({
   // Global hotkeys for palette, shortcuts, sidebar, new session and settings.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const modifier = e.ctrlKey || e.metaKey;
+      const modifier = primaryModifierDown(e);
       if (!modifier || e.altKey) return;
 
       if ((e.key.toLowerCase() === "k" && !e.shiftKey) || (e.key.toLowerCase() === "p" && e.shiftKey)) {
@@ -740,7 +741,7 @@ export default function AppShell({
   useEffect(() => {
     if (!canChangeView) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "o") return;
+      if (!primaryModifierDown(e) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "o") return;
       e.preventDefault();
       const next = nextView(transcriptView);
       setTranscriptView(next);
@@ -905,7 +906,7 @@ export default function AppShell({
 
   useEffect(() => {
     const handleShortcuts = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
+      if (!primaryModifierDown(e) || !e.shiftKey || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === "f") {
         e.preventDefault();
@@ -935,7 +936,7 @@ export default function AppShell({
   // Ctrl+Shift+T opens a new terminal; the backtick needs AltGr on AZERTY.
   useEffect(() => {
     const handleTerminal = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || !e.shiftKey || e.key.toLowerCase() !== "t" || !active.rootPath) return;
+      if (!primaryModifierDown(e) || e.altKey || !e.shiftKey || e.key.toLowerCase() !== "t" || !active.rootPath) return;
       e.preventDefault();
       void openShell();
     };
@@ -949,7 +950,7 @@ export default function AppShell({
   // Ctrl+Alt+B sends the command the agent is running to the background.
   useEffect(() => {
     const handleBackground = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.shiftKey || e.key.toLowerCase() !== "b") return;
+      if (!primaryModifierDown(e) || !e.altKey || e.shiftKey || e.key.toLowerCase() !== "b") return;
       const runId = latestForeground();
       if (!runId) return;
       e.preventDefault();
@@ -962,7 +963,7 @@ export default function AppShell({
   // Ctrl+\ closes the active pane in the dock.
   useEffect(() => {
     const handleClosePane = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key !== "\\") return;
+      if (!primaryModifierDown(e) || e.altKey || e.shiftKey || e.key !== "\\") return;
       if (currentDockLayout.active) {
         e.preventDefault();
         updateDockLayout(closePane(currentDockLayout, currentDockLayout.active));
@@ -979,7 +980,7 @@ export default function AppShell({
         label: mode === "code" && codeHome ? t("newProject") : mode === "code" ? t("newSession") : t("newDiscussion"),
         category: t("paletteSectionActions"),
         icon: "plus",
-        shortcut: "Ctrl+N",
+        shortcut: "Mod+N",
         onSelect: () => {
           setPaletteOpen(false);
           if (mode === "code" && codeHome) handleNewProject();
@@ -991,7 +992,7 @@ export default function AppShell({
         label: t("toggleSidebar"),
         category: t("paletteSectionActions"),
         icon: "sidebar-simple",
-        shortcut: "Ctrl+B",
+        shortcut: "Mod+B",
         onSelect: () => {
           setPaletteOpen(false);
           toggleSidebar();
@@ -1002,7 +1003,7 @@ export default function AppShell({
         label: mode === "chat" ? t("codeMode") : t("chatMode"),
         category: t("paletteSectionActions"),
         icon: mode === "chat" ? "code" : "chat-circle",
-        shortcut: "Ctrl+Shift+X",
+        shortcut: "Mod+Shift+X",
         onSelect: () => {
           setPaletteOpen(false);
           handleSwitchMode(mode === "chat" ? "code" : "chat");
@@ -1029,7 +1030,7 @@ export default function AppShell({
         label: t("keyboardShortcuts"),
         category: t("paletteSectionActions"),
         icon: "keyboard",
-        shortcut: "Ctrl+/",
+        shortcut: "Mod+/" as const,
         onSelect: () => {
           setPaletteOpen(false);
           setShortcutsOpen(true);
@@ -1040,7 +1041,7 @@ export default function AppShell({
         label: t("projectFiles"),
         category: t("paletteSectionPanes"),
         icon: "folder-simple",
-        shortcut: "Ctrl+Shift+F",
+        shortcut: "Mod+Shift+F" as const,
         onSelect: () => {
           setPaletteOpen(false);
           handleOpenFiles();
@@ -1051,7 +1052,7 @@ export default function AppShell({
         label: t("diffPane"),
         category: t("paletteSectionPanes"),
         icon: "git-diff",
-        shortcut: "Ctrl+Shift+D",
+        shortcut: "Mod+Shift+D" as const,
         onSelect: () => {
           setPaletteOpen(false);
           handleOpenDiff();
@@ -1062,7 +1063,7 @@ export default function AppShell({
         label: t("browser"),
         category: t("paletteSectionPanes"),
         icon: "globe-simple",
-        shortcut: "Ctrl+Shift+B",
+        shortcut: "Mod+Shift+B" as const,
         onSelect: () => {
           setPaletteOpen(false);
           handleOpenBrowser();
@@ -1075,7 +1076,7 @@ export default function AppShell({
               label: t("terminal"),
               category: t("paletteSectionPanes"),
               icon: "terminal-window" as const,
-              shortcut: "Ctrl+Shift+T",
+              shortcut: "Mod+Shift+T" as const,
               onSelect: () => {
                 setPaletteOpen(false);
                 void openShell();
@@ -1090,7 +1091,7 @@ export default function AppShell({
               label: t("closePane"),
               category: t("paletteSectionPanes"),
               icon: "x" as const,
-              shortcut: "Ctrl+\\",
+              shortcut: "Mod+\\" as const,
               onSelect: () => {
                 setPaletteOpen(false);
                 if (currentDockLayout.active) updateDockLayout(closePane(currentDockLayout, currentDockLayout.active));
@@ -1103,7 +1104,7 @@ export default function AppShell({
         label: t("plan"),
         category: t("paletteSectionPanes"),
         icon: "check",
-        shortcut: "Ctrl+Shift+L",
+        shortcut: "Mod+Shift+L" as const,
         onSelect: () => {
           setPaletteOpen(false);
           updateDockLayout(openPane(currentDockLayout, "plan"));

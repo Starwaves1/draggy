@@ -8,6 +8,7 @@ import { platformInfo } from "../platform/info";
 
 export type { TranscriptView as TranscriptViewMode } from "../chat/transcriptView";
 import type { TranscriptView as TranscriptViewMode } from "../chat/transcriptView";
+import { formatShortcut } from "../platform/shortcuts";
 
 const VIEW_LABEL = {
   normal: "transcriptNormal",
@@ -62,7 +63,7 @@ export function TitleBar({
       label: (
         <span className="flex items-center justify-between gap-3">
           {t("transcript")}
-          <Kbd>Ctrl+O</Kbd>
+          <Kbd>{formatShortcut("Mod+O")}</Kbd>
         </span>
       ),
     });
@@ -77,11 +78,11 @@ export function TitleBar({
   }
   if (onChangeViewMode && hasPanes) viewItems.push({ type: "separator", id: "sep" });
   if (hasPanes) viewItems.push({ type: "heading", id: "panes", label: t("panes") });
-  if (onOpenFiles) viewItems.push({ id: "files", label: t("projectFiles"), shortcut: "Ctrl+Shift+F", onSelect: onOpenFiles });
-  if (onOpenDiff) viewItems.push({ id: "diff", label: t("openDiff"), shortcut: "Ctrl+Shift+D", onSelect: onOpenDiff });
-  if (onOpenBrowser) viewItems.push({ id: "browser", label: t("browser"), shortcut: "Ctrl+Shift+B", onSelect: onOpenBrowser });
-  if (onOpenTerminal) viewItems.push({ id: "terminal", label: t("terminal"), shortcut: "Ctrl+Shift+T", onSelect: onOpenTerminal });
-  if (onOpenPlan) viewItems.push({ id: "plan", label: t("plan"), shortcut: "Ctrl+Shift+L", onSelect: onOpenPlan });
+  if (onOpenFiles) viewItems.push({ id: "files", label: t("projectFiles"), shortcut: "Mod+Shift+F", onSelect: onOpenFiles });
+  if (onOpenDiff) viewItems.push({ id: "diff", label: t("openDiff"), shortcut: "Mod+Shift+D", onSelect: onOpenDiff });
+  if (onOpenBrowser) viewItems.push({ id: "browser", label: t("browser"), shortcut: "Mod+Shift+B", onSelect: onOpenBrowser });
+  if (onOpenTerminal) viewItems.push({ id: "terminal", label: t("terminal"), shortcut: "Mod+Shift+T", onSelect: onOpenTerminal });
+  if (onOpenPlan) viewItems.push({ id: "plan", label: t("plan"), shortcut: "Mod+Shift+L", onSelect: onOpenPlan });
 
   return (
     <header
@@ -98,7 +99,7 @@ export function TitleBar({
         <IconButton
           name="sidebar-simple"
           label={sidebarOpen ? t("hideSidebar") : t("showSidebar")}
-          shortcut="Ctrl+B"
+          shortcut="Mod+B"
           size="dense"
           onClick={onToggleSidebar}
           className="no-drag"

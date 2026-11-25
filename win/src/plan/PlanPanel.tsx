@@ -12,6 +12,7 @@ import {
   toggleItem,
 } from "./plan";
 import type { PlanItem, PlanStatus } from "./plan";
+import { primaryModifierDown } from "../platform/shortcuts";
 
 interface PlanPanelProps {
   items: PlanItem[];
@@ -178,7 +179,7 @@ export default function PlanPanel({
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) sendComment();
+              if (event.key === "Enter" && primaryModifierDown(event)) sendComment();
             }}
             rows={2}
             placeholder={t("planComment")}

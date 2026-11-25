@@ -2,6 +2,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "./icons/Icon";
 import { Kbd } from "./Kbd";
 import { registerOverlay, wholeWindow } from "./overlays";
+import { formatShortcut, type Chord } from "../platform/shortcuts";
 
 export interface PaletteItem {
   id: string;
@@ -9,7 +10,7 @@ export interface PaletteItem {
   category: string;
   hint?: string;
   icon?: IconName;
-  shortcut?: string;
+  shortcut?: Chord;
   onSelect: () => void;
 }
 
@@ -126,7 +127,7 @@ export function CommandPalette({ open, onClose, items, initialQuery = "", t }: C
             aria-label={t("commandPalettePlaceholder")}
             className="w-full bg-transparent text-[14px] leading-5 text-text-primary placeholder:text-text-tertiary outline-none"
           />
-          <Kbd>Esc</Kbd>
+          <Kbd>{formatShortcut("Esc")}</Kbd>
         </div>
 
         <div ref={listRef} className="max-h-[380px] overflow-y-auto p-1.5 divide-y divide-rule/40">
@@ -163,7 +164,7 @@ export function CommandPalette({ open, onClose, items, initialQuery = "", t }: C
                       <span className="truncate font-medium">{item.label}</span>
                       {item.hint && <span className="truncate text-[12px] text-text-tertiary">{item.hint}</span>}
                     </div>
-                    {item.shortcut && <Kbd>{item.shortcut}</Kbd>}
+                    {item.shortcut && <Kbd>{formatShortcut(item.shortcut)}</Kbd>}
                   </div>
                 </div>
               );
