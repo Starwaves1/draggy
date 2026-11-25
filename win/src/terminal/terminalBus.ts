@@ -1,4 +1,3 @@
-import type { PasteMode } from "../platform/info";
 import type { ShellId } from "./shells";
 
 /** What the chat hands the terminal pane: a command to put on the prompt, and the commands the agent
@@ -100,13 +99,6 @@ export function shellForLanguage(language: string): ShellId | undefined {
     default:
       return undefined;
   }
-}
-
-/** The shell Run in terminal offers for a block. A Mac offers POSIX shells only: cmd never exists there,
- * and Homebrew pwsh is not in /etc/shells, so a click would open zsh beside the PowerShell text. */
-export function runShellFor(language: string, pasteMode: PasteMode): ShellId | undefined {
-  const shell = shellForLanguage(language);
-  return pasteMode === "reported" && shell !== "bash" ? undefined : shell;
 }
 
 export type PaneView = "shell" | "tasks";

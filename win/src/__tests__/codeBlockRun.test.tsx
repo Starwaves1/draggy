@@ -7,7 +7,6 @@ import { onPrefill, resetTerminalBus, shellForLanguage } from "../terminal/termi
 /** A shell code block offers Run in terminal; it fills a prompt and never runs anything. */
 
 afterEach(() => {
-  delete window.__DRAGGY_PLATFORM__;
   cleanup();
   resetTerminalBus();
 });
@@ -29,20 +28,6 @@ describe("Run in terminal", () => {
     fireEvent.click(screen.getByText("Run in terminal"));
     expect(seen).not.toHaveBeenCalled();
     dispose();
-  });
-
-  it("is offered on a Mac only for the shells every Mac has", () => {
-    window.__DRAGGY_PLATFORM__ = { windowControls: "native", readyAt: "frameCommitted", shortcuts: "command", pasteMode: "reported" };
-    for (const language of ["bash", "sh", "zsh", "shell"]) {
-      render(<CodeBlock language={language} value="ls" />);
-      expect(screen.getByText("Run in terminal")).toBeTruthy();
-      cleanup();
-    }
-    for (const language of ["powershell", "pwsh", "ps1", "cmd", "bat"]) {
-      render(<CodeBlock language={language} value="dir" />);
-      expect(screen.queryByText("Run in terminal")).toBeNull();
-      cleanup();
-    }
   });
 
   it("maps languages to shells", () => {
