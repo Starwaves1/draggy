@@ -3,8 +3,13 @@
 /** Who draws minimize, maximize and close: the title bar ("drawn") or the system ("native"). */
 export type WindowControls = "drawn" | "native";
 
+/** When the page reports its first paint: as the frame starts, or once it is committed (the shell then
+ * shows the window instantly). */
+export type ReadyAt = "frameStarted" | "frameCommitted";
+
 export interface PlatformInfo {
   windowControls: WindowControls;
+  readyAt: ReadyAt;
 }
 
 declare global {
@@ -15,7 +20,7 @@ declare global {
 }
 
 /** Windows sets no global, and neither do tests or a plain browser. */
-const WINDOWS: PlatformInfo = { windowControls: "drawn" };
+const WINDOWS: PlatformInfo = { windowControls: "drawn", readyAt: "frameStarted" };
 
 export function platformInfo(): PlatformInfo {
   return window.__DRAGGY_PLATFORM__ ?? WINDOWS;

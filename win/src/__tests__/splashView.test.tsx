@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { translations } from "../translations";
 import { INITIAL_STATE, splashView, type SplashState } from "../splash/splashView";
 import { ReadySignal } from "../app/ReadySignal";
+import type { PlatformInfo } from "../platform/info";
 
 const t = (key: string) => translations.en[key] ?? key;
 
@@ -66,6 +69,30 @@ describe("ReadySignal", () => {
       expect(ready).toHaveBeenCalledTimes(1);
     } finally {
       window.draggy = previous;
+    }
+  });
+
+  it("waits for its first frame to be committed when the shell shows the window at once", async () => {
+    // The macOS shell's info, from the case its Rust test checks the boot script against.
+    const file = path.resolve(import.meta.dirname, "../../../shared/fixtures/platform/info.json");
+    const macos = (JSON.parse(fs.readFileSync(file, "utf8")) as { cases: { expected: PlatformInfo }[] }).cases[0].expected;
+    vi.resetModules();
+    const { ReadySignal: FreshSignal } = await import("../app/ReadySignal");
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+    const ready = vi.fn(() => Promise.resolve());
+    const previous = window.draggy;
+    window.draggy = { startup: { ready } } as unknown as typeof window.draggy;
+    window.__DRAGGY_PLATFORM__ = Object.freeze({ ...macos });
+    try {
+      render(<FreshSignal />);
+      frames.shift()?.(0);
+      expect(ready).not.toHaveBeenCalled();
+      frames.shift()?.(16);
+      expect(ready).toHaveBeenCalledTimes(1);
+    } finally {
+      window.draggy = previous;
+      delete window.__DRAGGY_PLATFORM__;
     }
   });
 });

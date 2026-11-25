@@ -80,7 +80,10 @@ pub(crate) fn show_main_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         return Ok(());
     };
     let data_dir = app.state::<AppState>().storage.data_dir().to_path_buf();
-    paint_and_show(&window, &data_dir)?;
+    // Revealed even when painting failed, or the window would stay on screen unseen and deaf to clicks.
+    let shown = paint_and_show(&window, &data_dir);
+    platform::window::reveal(&window)?;
+    shown?;
     window.set_focus()
 }
 
@@ -177,7 +180,10 @@ pub(crate) fn build_main_window(app: &tauri::AppHandle, setup: bool) -> tauri::R
     if let Some(script) = &import {
         window = window.initialization_script(script);
     }
-    platform::window::main_chrome(window).build().map(|_| ())
+    let window = platform::window::main_chrome(window).build()?;
+    // A failure leaves the window hidden as it always was, and the splash's timeout still shows it.
+    let _ = platform::window::paint_unseen(&window);
+    Ok(())
 }
 
 /// Points the open main window at first-run setup: a reload with the setup query, then shown and focused.
@@ -210,6 +216,10 @@ pub(crate) fn focus_main_window(app: &tauri::AppHandle) {
         .get_webview_window("main")
         .or_else(|| app.get_webview_window(splash::LABEL));
     if let Some(window) = window {
+        // A second launch can arrive while the main window is still unseen, and focus must not go there.
+        if window.label() == "main" {
+            let _ = platform::window::reveal(&window);
+        }
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
