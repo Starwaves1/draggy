@@ -1,6 +1,6 @@
 import { logSwallow } from "../logger";
 import { createTerminalView, type TerminalView } from "./xtermView";
-import { promptText } from "./terminalBus";
+import { codeGoesToTerminal, promptText } from "./terminalBus";
 
 /** The open terminals, kept outside the pane so switching to another dock pane and back does not
  * close a shell. Each one is an xterm on its own element that the pane attaches where it shows. */
@@ -175,7 +175,7 @@ export function focusSession(id: string): void {
 export function prefillSession(id: string, command: string): boolean {
   const session = byId(id);
   const bridge = api();
-  if (!session || !bridge || session.exited) return false;
+  if (!session || !bridge || session.exited || !codeGoesToTerminal()) return false;
 
   const lines = String(command).split("\n").map(promptText).filter(Boolean);
   if (!lines.length) return false;
