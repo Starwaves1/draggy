@@ -112,6 +112,8 @@
     --hover-bg: #d4d4d4;
     --chat-font-size: 15px;
     --chat-column: 720px;
+    /* Room the macOS traffic lights take at the window's top start corner. */
+    --traffic-light-space: 68px;
     /* The voice orb: one flat colour, opposite the page it sits on. */
     --orb: #111111;
     /* The default accent; src/app/accent.ts sets the chosen one on the body. */
@@ -1327,6 +1329,8 @@ kbd {
 .img-viewer .bar .zoom { display: inline-flex; align-items: center; margin-inline-end: 6px; }
 .img-viewer .bar .zoom button { padding: 0 8px; }
 .img-viewer .bar .zoom .level { min-width: 58px; justify-content: center; font-variant-numeric: tabular-nums; }
+/* Starts the title where the title bar's content starts: its 12px padding, then the traffic-light space. */
+.img-viewer.traffic-lights .bar { padding-inline-start: calc(12px + var(--traffic-light-space)); }
 .img-viewer.show .bar { opacity: 1; }
 .img-viewer .bar b { font-weight: 500; font-size: 14px; min-width: 0; }
 .img-viewer .bar b + span { color: #a6abb2; font-size: 12px; margin-inline-start: 8px; font-variant-numeric: tabular-nums; }
