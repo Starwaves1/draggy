@@ -17,9 +17,10 @@ pub fn unified_memory() -> bool {
     cfg!(target_arch = "aarch64")
 }
 
-/// The user's home folder, as `os.homedir()` reads it.
-pub fn home() -> String {
-    std::env::var("HOME").unwrap_or_default()
+/// Empty, so the probe lists no drive: core would take "/" from a home path, and on a Mac that is
+/// the read-only system volume.
+pub fn probe_home() -> String {
+    String::new()
 }
 
 /// The chip's name, "Apple M2 Pro" style, as `os.cpus()[0].model` reads it.
@@ -51,7 +52,11 @@ async fn chip() -> Option<String> {
 /// Callers expect this synchronous, as the Win32 call is, so it waits on a quick sysctl.
 pub fn memory() -> Memory {
     let args = ["hw.memsize", "kern.memorystatus_level"].map(String::from);
-    sysctl_memory(&blocking_text(SYSCTL, &args).unwrap_or_default())
+    // sysctl prints the keys it knows and still fails on one it does not, so its output is read either way.
+    let text = output_blocking(SYSCTL, &args)
+        .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+        .unwrap_or_default();
+    sysctl_memory(&text)
 }
 
 /// Space of the volume holding `root`. Core's `VolumeSpace` is synchronous, hence the blocking run.
@@ -90,6 +95,6 @@ mod tests {
         assert!(memory.total_bytes >= 1 << 30);
         assert!(memory.free_bytes > 0 && memory.free_bytes <= memory.total_bytes);
         assert!(space.size_bytes > 0 && space.free_bytes <= space.size_bytes);
-        assert!(!home().is_empty());
+        assert!(probe_home().is_empty());
     }
 }

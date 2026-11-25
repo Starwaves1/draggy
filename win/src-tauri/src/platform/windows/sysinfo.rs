@@ -15,8 +15,8 @@ pub fn unified_memory() -> bool {
     false
 }
 
-/// The user's home folder, as `os.homedir()` reads it.
-pub fn home() -> String {
+/// The home folder, as `os.homedir()` reads it. The hardware probe lists the drive it sits on.
+pub fn probe_home() -> String {
     std::env::var("USERPROFILE").unwrap_or_default()
 }
 

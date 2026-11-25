@@ -125,7 +125,7 @@ pub fn now_ms() -> i64 {
 
 impl Engines {
     pub fn new(user_data: &Path) -> Self {
-        let home = crate::platform::sysinfo::home();
+        let home = crate::platform::sysinfo::probe_home();
         let platform = host_platform();
         let probe = HardwareProbe::new(
             platform.os,
