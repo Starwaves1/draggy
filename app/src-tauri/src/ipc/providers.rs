@@ -149,25 +149,25 @@ async fn models(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
 /// The test asks for a fresh listing, then has a model answer a short prompt: address, key, network and model in one.
 async fn test(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
     let id = text(&args, 0);
-    blocking(
-        move || {
-            let registry = store(&app);
-            // The prompt runs outside the lister's lock, so a slow model never holds up the menus.
-            let tested = with_lister(|lister| lister.list(&registry, &id, true, now_ms()))
-                .and_then(|infos| test_prompt(&AppHttp, &registry, &id, &infos, now_ms()).map(|_| infos.len()));
-            match tested {
-                Ok(count) => {
-                    diag(&app).info(
-                        "providers.ipc",
-                        "provider test passed",
-                        Some(json!({ "count": count })),
-                    );
-                    json!({ "success": true, "count": count })
-                }
-                Err(error) => failed(&app, &error),
+    blocking(move || {
+        let registry = store(&app);
+        // The prompt runs outside the lister's lock, so a slow model never holds up the menus.
+        let tested =
+            with_lister(|lister| lister.list(&registry, &id, true, now_ms())).and_then(|infos| {
+                test_prompt(&AppHttp, &registry, &id, &infos, now_ms()).map(|_| infos.len())
+            });
+        match tested {
+            Ok(count) => {
+                diag(&app).info(
+                    "providers.ipc",
+                    "provider test passed",
+                    Some(json!({ "count": count })),
+                );
+                json!({ "success": true, "count": count })
             }
-        },
-    )
+            Err(error) => failed(&app, &error),
+        }
+    })
     .await
 }
 
