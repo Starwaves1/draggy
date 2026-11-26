@@ -13,7 +13,7 @@ use draggy_diagnostics::Diagnostics;
 use draggy_providers::autopin::plan_pins;
 use draggy_providers::catalog::{Catalog, CatalogEntry};
 use draggy_providers::discovery::Discovery;
-use draggy_providers::models::{ListError, ModelLister, TestError, test_prompt};
+use draggy_providers::models::{ListError, ModelLister, TEST_MAX_TOKENS, TestError, test_prompt};
 use draggy_providers::registry::{AddArgs, Keystore, Patch, Registry as Providers, RegistryError};
 use draggy_providers::remote_catalog::{InstanceUse, PUBLIC_KEY, Refresh, RemoteCatalog};
 use serde_json::{Value, json};
@@ -158,14 +158,15 @@ async fn test(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
         };
         let started = Instant::now();
         match test_prompt(&AppHttp, &registry, &id, &infos, now_ms()) {
-            Ok(model) => {
+            Ok(tested) => {
                 let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
                 diag(&app).info(
                     "providers.ipc",
                     "provider test passed",
                     Some(json!({ "count": infos.len(), "ms": ms })),
                 );
-                json!({ "success": true, "count": infos.len(), "model": model, "ms": ms })
+                let (model, reply) = tested.map(|t| (t.model, t.reply)).unzip();
+                json!({ "success": true, "count": infos.len(), "model": model, "reply": reply, "tokens": TEST_MAX_TOKENS, "ms": ms })
             }
             Err(TestError::Failed(error)) => failed(&app, &error),
             Err(TestError::NoModels) => {

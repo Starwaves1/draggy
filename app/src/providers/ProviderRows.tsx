@@ -17,6 +17,7 @@ import type {
   ProviderCapability,
   ProviderCatalogEntry,
   ProviderFailure,
+  ProviderTestReply,
   ProviderInstance,
   ProviderModel,
 } from "../types";
@@ -24,22 +25,28 @@ import { swallowed } from "../logger";
 
 type Translate = (key: string) => string;
 
-/** A line under Test: what happened, and on a failure the article on it. */
-type Note = { text: string; failed: boolean; url?: string };
+/** A line under Test: what happened, on a failure the article on it, on a pass the model's reply. */
+type Note = { text: string; failed: boolean; url?: string; quote?: string };
 
 type TestAnswer = Awaited<ReturnType<NonNullable<Window["draggy"]>["providers"]["test"]>>;
 
 /** Who answered and how fast, or the cause of the failure in plain words. */
 function testNote(answer: TestAnswer, provider: string, t: Translate): Note {
   if (answer.success) {
-    const text = answer.model
-      ? fill(t("testReplied"), { model: answer.model, time: formatDuration(answer.ms) })
-      : fill(t("testPassed"), { count: String(answer.count) });
-    return { text, failed: false };
+    if (!answer.model || !answer.reply) return { text: fill(t("testPassed"), { count: String(answer.count) }), failed: false };
+    const text = fill(t("testReplied"), { model: answer.model, time: formatDuration(answer.ms), tokens: String(answer.tokens) });
+    return { text, failed: false, quote: replyLine(answer.reply, t) };
   }
   if (answer.error.kind === "no-models") return { text: t("noModelsListed"), failed: true };
   if (answer.error.kind === "no-reply") return { text: fill(t("testNoReply"), { model: answer.error.model ?? "" }), failed: true };
   return failureNote(answer.error, provider);
+}
+
+/** The reply as plain text; React escapes it, so a server cannot inject markup. */
+function replyLine(reply: ProviderTestReply, t: Translate): string {
+  if (reply.kind === "thinking") return `${t("thinking")}: ${reply.text}`;
+  if (reply.kind === "tool") return `${t("calledTool")} ${reply.text}`;
+  return reply.text;
 }
 
 function failureNote(failure: ProviderFailure, provider: string): Note {
@@ -236,22 +243,25 @@ export function InstanceRow({
             <KeyField instance={instance} entry={entry} providers={providers} onSaved={saved} t={t} />
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              onClick={() => {
-                setNote(null);
-                void window.draggy?.providers
-                  ?.test(instance.id)
-                  .then((answer) => {
-                    setNote(testNote(answer, instance.label, t));
-                    if (answer.success) void listModels();
-                  })
-                  .catch(swallowed("providers", "best effort, the screen works without it"));
-              }}
-            >
-              {t("testConnection")}
-            </Button>
-            {note && <NoteLine note={note} t={t} />}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={() => {
+                  setNote(null);
+                  void window.draggy?.providers
+                    ?.test(instance.id)
+                    .then((answer) => {
+                      setNote(testNote(answer, instance.label, t));
+                      if (answer.success) void listModels();
+                    })
+                    .catch(swallowed("providers", "best effort, the screen works without it"));
+                }}
+              >
+                {t("testConnection")}
+              </Button>
+              {note && <NoteLine note={note} t={t} />}
+            </div>
+            {note?.quote && <blockquote className="border-s-2 border-rule ps-2 text-xs text-text-tertiary break-words min-w-0">{note.quote}</blockquote>}
           </div>
 
           {failure && !note && <NoteLine note={failureNote(failure, instance.label)} t={t} />}

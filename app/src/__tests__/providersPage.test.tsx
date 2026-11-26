@@ -37,7 +37,7 @@ function stubMain({ instances = [] as ProviderInstance[], catalog = [entry("open
       return { success: true, instance: find(id) };
     }),
     remove: vi.fn(async () => ({ success: true })),
-    test: vi.fn(async () => ({ success: true, count: 0, model: null, ms: 0 })),
+    test: vi.fn(async () => ({ success: true, count: 0, model: null, reply: null, tokens: 25, ms: 0 })),
     models: vi.fn(async (id: string) => ({
       success: true,
       models: ["m-1", "m-2"].map((model) => ({ id: model, ref: `@${id}/${model}`, capabilities: ["completion"], cloud: false, pinned: find(id).pinnedModels.includes(model), override: null })),
@@ -209,9 +209,34 @@ describe("the Providers page", () => {
       await waitFor(() => expect(api.test).toHaveBeenCalledWith("openai"));
     };
 
-    it("names the model that replied and how long it took", async () => {
-      await tested({ success: true, count: 2, model: "m-2", ms: 1340 });
-      expect(await screen.findByText("Connected. m-2 replied in 1.3 s.")).toBeTruthy();
+    const replied = (reply: { kind: string; text: string }) => tested({ success: true, count: 2, model: "m-2", reply, tokens: 25, ms: 1340 });
+
+    it("names the model, its time and the token cap, and quotes what it said", async () => {
+      await replied({ kind: "text", text: "Hello! How can I help?" });
+      expect(await screen.findByText("Connected. m-2 replied in 1.3 s. Its reply, capped at 25 tokens:")).toBeTruthy();
+      expect(screen.getByText("Hello! How can I help?").tagName).toBe("BLOCKQUOTE");
+    });
+
+    it("labels a reasoning model's reply as its thinking", async () => {
+      await replied({ kind: "thinking", text: "The user said hi" });
+      expect(await screen.findByText(`${en("thinking")}: The user said hi`)).toBeTruthy();
+    });
+
+    it("names the tool a model called instead of writing", async () => {
+      await replied({ kind: "tool", text: "get_time" });
+      expect(await screen.findByText(`${en("calledTool")} get_time`)).toBeTruthy();
+    });
+
+    it("shows a reply's markup as text", async () => {
+      await replied({ kind: "text", text: "<img src=x onerror=alert(1)> **bold**" });
+      expect(await screen.findByText("<img src=x onerror=alert(1)> **bold**")).toBeTruthy();
+      expect(document.querySelector("img[src=x], strong")).toBeNull();
+    });
+
+    it("quotes nothing for an account, which its listing proves", async () => {
+      await tested({ success: true, count: 3, model: null, reply: null, tokens: 25, ms: 0 });
+      expect(await screen.findByText("Connected: 3 models.")).toBeTruthy();
+      expect(document.querySelector("blockquote")).toBeNull();
     });
 
     it("says which model sent back an empty reply", async () => {

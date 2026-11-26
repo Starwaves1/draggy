@@ -11,7 +11,7 @@ use base64::engine::general_purpose::STANDARD;
 use draggy_providers::catalog::{Catalog, CatalogEntry};
 use draggy_providers::discovery::{Discovery, ports};
 use draggy_providers::http::{HttpClient, HttpRequest, HttpResponse, TransportError};
-use draggy_providers::models::{ListError, ModelLister, TestError, test_prompt};
+use draggy_providers::models::{ListError, ModelLister, Reply, TestError, Tested, test_prompt};
 use draggy_providers::registry::{AddArgs, Keystore, KvStore, Patch, Registry};
 use draggy_providers::remote_catalog::{
     InstanceUse, PUBLIC_KEY, Refresh, RemoteCatalog, STORE, URL_JSON, verified,
@@ -564,7 +564,7 @@ fn a_stored_record_this_build_cannot_read_survives_other_changes() {
 const OPENAI_CHAT: &str = "https://api.openai.com/v1/chat/completions";
 
 /// The registry, listing and chat answer a provider test meets, with `pinned` ticked.
-fn tested(pinned: &[&str], chat: &str) -> (FakeNet, Result<Option<String>, TestError>) {
+fn tested(pinned: &[&str], chat: &str) -> (FakeNet, Result<Option<Tested>, TestError>) {
     let net = openai_net(200, r#"{"data":[{"id":"gpt-a"},{"id":"gpt-b"}]}"#);
     net.answer(OPENAI_CHAT, 200, chat);
     let mut registry = openai_registry(&Vault::default());
@@ -587,7 +587,10 @@ fn tested(pinned: &[&str], chat: &str) -> (FakeNet, Result<Option<String>, TestE
 #[test]
 fn a_test_prompts_the_ticked_model_with_a_small_limit_and_the_provider_key() {
     let (net, result) = tested(&["gpt-b"], r#"{"choices":[{"message":{"content":"ok"}}]}"#);
-    assert_eq!(result, Ok(Some("gpt-b".to_owned())));
+    assert_eq!(
+        result.map(|t| t.map(|t| t.model)),
+        Ok(Some("gpt-b".to_owned()))
+    );
     let requests = net.requests.borrow();
     let chat = requests
         .iter()
@@ -608,16 +611,65 @@ fn a_test_prompts_the_ticked_model_with_a_small_limit_and_the_provider_key() {
 #[test]
 fn a_test_with_nothing_ticked_prompts_the_first_listed_model() {
     let (_, result) = tested(&[], r#"{"choices":[{"message":{"content":"ok"}}]}"#);
-    assert_eq!(result, Ok(Some("gpt-a".to_owned())));
+    assert_eq!(
+        result.map(|t| t.map(|t| t.model)),
+        Ok(Some("gpt-a".to_owned()))
+    );
 }
 
 #[test]
-fn a_reasoning_model_that_only_thought_within_the_limit_passes() {
+fn a_reasoning_model_that_only_thought_within_the_limit_passes_showing_its_thinking() {
     let (_, result) = tested(
         &[],
-        r#"{"choices":[{"message":{"content":"","reasoning_content":"The user wants"},"finish_reason":"length"}]}"#,
+        r#"{"choices":[{"message":{"content":null,"reasoning_content":"The user\nwants"},"finish_reason":"length"}]}"#,
     );
-    assert_eq!(result, Ok(Some("gpt-a".to_owned())));
+    let tested = result.expect("passes").expect("prompted");
+    assert_eq!(tested.model, "gpt-a");
+    assert_eq!(tested.reply, Reply::Thinking("The user wants".to_owned()));
+}
+
+/// The reply the test shows for a chat answer `message`.
+fn reply_to(message: &str) -> Reply {
+    let chat = format!(r#"{{"choices":[{{"message":{message}}}]}}"#);
+    tested(&[], &chat)
+        .1
+        .expect("passes")
+        .expect("prompted")
+        .reply
+}
+
+#[test]
+fn a_test_shows_the_reply_on_one_line_over_any_thinking() {
+    let reply =
+        reply_to(r#"{"content":"  Hello!\n\n  How can I\thelp? ","reasoning_content":"hmm"}"#);
+    assert_eq!(reply, Reply::Text("Hello! How can I help?".to_owned()));
+}
+
+#[test]
+fn a_test_names_the_tool_a_model_called_instead_of_writing() {
+    let reply = reply_to(
+        r#"{"content":null,"reasoning_content":"use a tool","tool_calls":[{"id":"c1","type":"function","function":{"name":"get_time","arguments":"{}"}}]}"#,
+    );
+    assert_eq!(reply, Reply::Tool("get_time".to_owned()));
+}
+
+#[test]
+fn a_test_cuts_a_reply_from_a_server_that_ignores_the_limit() {
+    let long = "word ".repeat(100);
+    let Reply::Text(text) = reply_to(&format!(r#"{{"content":"{long}"}}"#)) else {
+        panic!("a text reply");
+    };
+    assert_eq!(text.chars().count(), 200);
+    assert!(text.ends_with('…'), "{text}");
+}
+
+#[test]
+fn a_tests_reply_reaches_the_renderer_as_kind_and_text() {
+    let reply = Reply::Thinking("hmm".to_owned());
+    assert_eq!(
+        serde_json::to_value(reply).expect("JSON"),
+        json!({ "kind": "thinking", "text": "hmm" })
+    );
 }
 
 #[test]

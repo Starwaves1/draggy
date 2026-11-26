@@ -27,7 +27,9 @@ const TIMEOUT_MS: u64 = 15_000;
 const TEST_TIMEOUT_MS: u64 = 60_000;
 /// A greeting, not an instruction: a reasoning model spends fewer tokens deciding how to answer it.
 const TEST_PROMPT: &str = "Hi";
-const TEST_MAX_TOKENS: i64 = 25;
+pub const TEST_MAX_TOKENS: i64 = 25;
+/// The token limit already keeps a reply short; this bounds it for a server that ignores the limit.
+const REPLY_CHARS: usize = 200;
 /// Ollama is asked about this many models at most; the rest stay unknown.
 const MAX_SHOWN: usize = 50;
 
@@ -55,6 +57,22 @@ pub enum TestError {
     Failed(ListError),
     NoModels,
     NoReply(String),
+}
+
+/// What a tested model sent back, on one line: its text, else the tool it called, else its thinking.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "text", rename_all = "lowercase")]
+pub enum Reply {
+    Text(String),
+    Tool(String),
+    Thinking(String),
+}
+
+/// The model a provider test prompted, and its reply.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Tested {
+    pub model: String,
+    pub reply: Reply,
 }
 
 impl From<ListError> for TestError {
@@ -339,14 +357,14 @@ fn send_json<H: HttpClient>(http: &H, request: &HttpRequest, now: u64) -> Result
 
 /// A short prompt to the first ticked model the listing still has, else the first listed. Passes only when the
 /// model answers; thinking counts, since a reasoning model can spend the whole limit before it writes text.
-/// Returns the model that answered; an account's runtime is proven by its listing and is not prompted.
+/// Returns the model and its reply; an account's runtime is proven by its listing and is not prompted.
 pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
     http: &H,
     registry: &R,
     instance_id: &str,
     listed: &[ModelInfo],
     now: u64,
-) -> Result<Option<String>, TestError> {
+) -> Result<Option<Tested>, TestError> {
     let conn = registry
         .connection_for(instance_id)
         .ok_or_else(|| ListError::Other(format!("No provider {instance_id}")))?;
@@ -395,14 +413,33 @@ pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
         _ => openai::translate_json(&json),
     }
     .map_err(ListError::Failure)?;
-    let answered = !answer.content.trim().is_empty()
-        || !answer.reasoning.trim().is_empty()
-        || !answer.tool_calls.is_empty();
-    if !answered {
+    let reply = if let Some(text) = one_line(&answer.content) {
+        Reply::Text(text)
+    } else if let Some(call) = answer.tool_calls.first() {
+        Reply::Tool(one_line(&call.name).unwrap_or_default())
+    } else if let Some(text) = one_line(&answer.reasoning) {
+        Reply::Thinking(text)
+    } else {
         return Err(TestError::NoReply(model));
-    }
+    };
     info!(target: "providers.models", instance_id, "test prompt answered");
-    Ok(Some(model))
+    Ok(Some(Tested { model, reply }))
+}
+
+/// Text with control characters and runs of whitespace made single spaces, cut to `REPLY_CHARS`; `None` when blank.
+fn one_line(text: &str) -> Option<String> {
+    let words: Vec<&str> = text
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        return None;
+    }
+    let line = words.join(" ");
+    Some(match line.char_indices().nth(REPLY_CHARS) {
+        Some((cut, _)) => format!("{}…", line[..cut].trim_end()),
+        None => line,
+    })
 }
 
 /// A model from LM Studio's own listing: its window, and the capabilities its type and tags name.
