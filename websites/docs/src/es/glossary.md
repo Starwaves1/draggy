@@ -32,7 +32,7 @@ La cantidad de texto, contada en tokens, que un modelo puede sostener a la vez. 
 
 ### Compactación {#compaction}
 
-Plegar la parte más antigua de una conversación larga en un resumen, para que la conversación pueda seguir. Por defecto ocurre cuando solo queda libre una cuarta parte de la ventana de contexto, o 50.000 tokens en una ventana grande, y nunca en una ventana de 8k o menos. Los modelos de pago en la nube se compactan como máximo a los 64.000 tokens, salvo que pongas un límite. Ver [Chat y Code](doc:chat-and-code#long-conversations).
+Plegar la parte más antigua de una conversación larga en un resumen, para que la conversación pueda seguir. Por defecto ocurre cuando solo queda libre una cuarta parte de la ventana de contexto, o 50.000 tokens en una ventana grande. Una ventana de 8k o menos solo se compacta en un límite que pongas, y una ventana que el modelo no indica se compacta al 60% de unos 8k supuestos. Los modelos de pago en la nube se compactan como máximo a los 64.000 tokens, salvo que pongas un límite. Ver [Chat y Code](doc:chat-and-code#long-conversations).
 
 ### Servidor MCP {#mcp-server}
 

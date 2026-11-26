@@ -32,7 +32,7 @@ La quantité de texte, comptée en jetons, qu'un modèle peut contenir à la foi
 
 ### Compactage {#compaction}
 
-Replier la partie ancienne d'une longue conversation dans un résumé, pour que la conversation puisse continuer. Par défaut, cela se produit quand il ne reste qu'un quart de la fenêtre de contexte, ou 50 000 jetons sur une grande fenêtre, et jamais sur une fenêtre de 8k ou moins. Les modèles cloud payants sont repliés au plus tard à 64 000 jetons, sauf si vous définissez une limite. Voir [Chat et Code](doc:chat-and-code#long-conversations).
+Replier la partie ancienne d'une longue conversation dans un résumé, pour que la conversation puisse continuer. Par défaut, cela se produit quand il ne reste qu'un quart de la fenêtre de contexte, ou 50 000 jetons sur une grande fenêtre. Une fenêtre de 8k ou moins n'est repliée qu'à une limite que vous fixez, et une fenêtre que le modèle n'indique pas est repliée à 60 % d'un 8k supposé. Les modèles cloud payants sont repliés au plus tard à 64 000 jetons, sauf si vous définissez une limite. Voir [Chat et Code](doc:chat-and-code#long-conversations).
 
 ### Serveur MCP {#mcp-server}
 

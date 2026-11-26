@@ -48,6 +48,6 @@ The sidebar session menu lets you export a conversation to Markdown (`.md`) or s
 
 ## When a conversation gets long {#long-conversations}
 
-When a reply reaches the context limit and the model has room, Draggy automatically expands the window to the next bucket and continues generating. When only a quarter of what the model can hold is left free, or 50,000 tokens on a large window, Draggy folds the older part of the conversation into a summary, and the conversation carries on. A window of 8k or less never folds on its own. For paid cloud models, that point is capped at 64,000 tokens unless you set a limit.
+When a reply reaches the context limit and the model has room, Draggy automatically expands the window to the next bucket and continues generating. When only a quarter of what the model can hold is left free, or 50,000 tokens on a large window, Draggy folds the older part of the conversation into a summary, and the conversation carries on. The instructions, tools, memory and skills count toward that point. A window of 8k or less never folds on its own, though a limit you set still applies. When the model does not report its window, Draggy assumes 8k and folds at 60% of it. For paid cloud models, that point is capped at 64,000 tokens unless you set a limit. If the model refuses the conversation as too long, Draggy folds it as `/compact` would, so Retry can go through.
 
 `/compact` does it now. `/compact-limit 20k` moves the point, and `auto` puts it back.

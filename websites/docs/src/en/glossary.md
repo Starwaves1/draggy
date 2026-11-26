@@ -32,7 +32,7 @@ The amount of text, counted in tokens, that a model can hold at once. The contex
 
 ### Compaction {#compaction}
 
-Folding the older part of a long conversation into a summary, so the conversation can carry on. By default it happens when a quarter of the context window is left free, or 50,000 tokens on a large window, and never on a window of 8k or less. Paid cloud models fold by 64,000 tokens unless you set a limit. See [Chat and Code](doc:chat-and-code#long-conversations).
+Folding the older part of a long conversation into a summary, so the conversation can carry on. By default it happens when a quarter of the context window is left free, or 50,000 tokens on a large window. A window of 8k or less folds only at a limit you set, and a window the model does not report folds at 60% of an assumed 8k. Paid cloud models fold by 64,000 tokens unless you set a limit. See [Chat and Code](doc:chat-and-code#long-conversations).
 
 ### MCP server {#mcp-server}
 
