@@ -17,12 +17,16 @@ use crate::js::{count_or_none, truthy};
 use crate::registry::{
     Instance, InstanceConnection, Keystore, KvStore, ModelOverride, Patch, Registry,
 };
-use crate::types::{ErrorKind, ProviderError};
+use crate::types::{ChatMessage, ChatRequest, Content, ErrorKind, ProviderError};
 
 pub const FLAGS: [&str; 3] = ["tools", "vision", "thinking"];
 const DAY_MS: u64 = 86_400_000;
 const FAILURE_MS: u64 = 60_000;
 const TIMEOUT_MS: u64 = 15_000;
+/// A test's prompt waits longer than a listing: a local server may load the model first.
+const TEST_TIMEOUT_MS: u64 = 60_000;
+const TEST_PROMPT: &str = "Reply with one word: ok";
+const TEST_MAX_TOKENS: i64 = 25;
 /// Ollama is asked about this many models at most; the rest stay unknown.
 const MAX_SHOWN: usize = 50;
 
@@ -298,20 +302,105 @@ impl<H: HttpClient> ModelLister<H> {
     /// One request, its answer parsed as JSON. Anything but a 2xx answer is a provider failure.
     fn request(&self, mut request: HttpRequest, now: u64) -> Result<Value, ListError> {
         request.timeout_ms = Some(TIMEOUT_MS);
-        let response = self
-            .http
-            .send(&request)
-            .map_err(|error| ListError::Failure(from_network(&error)))?;
-        if !response.ok() {
-            return Err(ListError::Failure(from_response_text(
-                response.status,
-                &response.body,
-                &response.headers,
-                now,
-            )));
-        }
-        serde_json::from_str(&response.body).map_err(|error| ListError::Other(error.to_string()))
+        send_json(&self.http, &request, now)
     }
+}
+
+/// One request, its answer parsed as JSON. Anything but a 2xx answer is a provider failure.
+fn send_json<H: HttpClient>(http: &H, request: &HttpRequest, now: u64) -> Result<Value, ListError> {
+    let response = http
+        .send(request)
+        .map_err(|error| ListError::Failure(from_network(&error)))?;
+    if !response.ok() {
+        return Err(ListError::Failure(from_response_text(
+            response.status,
+            &response.body,
+            &response.headers,
+            now,
+        )));
+    }
+    serde_json::from_str(&response.body).map_err(|error| ListError::Other(error.to_string()))
+}
+
+/// A short prompt to the first ticked model the listing still has, else the first listed. Passes only when the
+/// model answers; thinking counts, since a reasoning model can spend the whole limit before it writes text.
+/// Returns the model that answered; an account's runtime is proven by its listing and is not prompted.
+pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
+    http: &H,
+    registry: &R,
+    instance_id: &str,
+    listed: &[ModelInfo],
+    now: u64,
+) -> Result<Option<String>, ListError> {
+    let conn = registry
+        .connection_for(instance_id)
+        .ok_or_else(|| ListError::Other(format!("No provider {instance_id}")))?;
+    if conn
+        .entry
+        .as_ref()
+        .is_some_and(|entry| entry.kind == "account")
+    {
+        return Ok(None);
+    }
+    let model = conn
+        .instance
+        .pinned_models
+        .iter()
+        .find(|id| listed.iter().any(|info| &info.id == *id))
+        .or_else(|| listed.first().map(|info| &info.id))
+        .cloned()
+        .ok_or_else(|| no_answer(ErrorKind::ModelNotFound, "The provider lists no models."))?;
+    let chat = ChatRequest {
+        messages: vec![ChatMessage {
+            role: "user".to_owned(),
+            content: Some(Content::Text(TEST_PROMPT.to_owned())),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+            tool_name: None,
+            thinking: None,
+            provider_state: None,
+        }],
+        max_tokens: Some(TEST_MAX_TOKENS),
+        ..ChatRequest::default()
+    };
+    let adapter = conn.adapter();
+    let protocol = conn.entry.as_ref().map(|entry| entry.protocol.as_str());
+    let mut request = match protocol {
+        Some("ollama") => ollama::build_request(&chat, &adapter, &model),
+        Some("anthropic") => anthropic::build_request(&chat, &adapter, &model),
+        Some("gemini") => gemini::build_request(&chat, &adapter, &model),
+        _ => openai::build_request(&chat, &adapter, &model),
+    };
+    request.timeout_ms = Some(TEST_TIMEOUT_MS);
+    let json = send_json(http, &request, now)?;
+    let answer = match protocol {
+        Some("ollama") => Ok(ollama::translate_json(&json)),
+        Some("anthropic") => anthropic::translate_json(&json, Some(instance_id)),
+        Some("gemini") => gemini::translate_json(&json, Some(instance_id)),
+        _ => openai::translate_json(&json),
+    }
+    .map_err(ListError::Failure)?;
+    let answered = !answer.content.trim().is_empty()
+        || !answer.reasoning.trim().is_empty()
+        || !answer.tool_calls.is_empty();
+    if !answered {
+        return Err(no_answer(
+            ErrorKind::UnknownError,
+            "The model sent back no text.",
+        ));
+    }
+    info!(target: "providers.models", instance_id, "test prompt answered");
+    Ok(Some(model))
+}
+
+fn no_answer(kind: ErrorKind, message: &str) -> ListError {
+    ListError::Failure(ProviderError {
+        kind,
+        status: None,
+        message: Some(message.to_owned()),
+        provider_message: None,
+        retry_after: None,
+    })
 }
 
 /// A model from LM Studio's own listing: its window, and the capabilities its type and tags name.
