@@ -13,7 +13,7 @@ use draggy_diagnostics::Diagnostics;
 use draggy_providers::autopin::plan_pins;
 use draggy_providers::catalog::{Catalog, CatalogEntry};
 use draggy_providers::discovery::Discovery;
-use draggy_providers::models::{ListError, ModelLister};
+use draggy_providers::models::{ListError, ModelLister, test_prompt};
 use draggy_providers::registry::{AddArgs, Keystore, Patch, Registry as Providers, RegistryError};
 use draggy_providers::remote_catalog::{InstanceUse, PUBLIC_KEY, Refresh, RemoteCatalog};
 use serde_json::{Value, json};
@@ -146,20 +146,26 @@ async fn models(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
     .await
 }
 
-/// A fresh listing is the test: it proves the address, the key and the network in one request.
+/// The test asks for a fresh listing, then has a model answer a short prompt: address, key, network and model in one.
 async fn test(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
     let id = text(&args, 0);
     blocking(
-        move || match with_lister(|lister| lister.list(&store(&app), &id, true, now_ms())) {
-            Ok(infos) => {
-                diag(&app).info(
-                    "providers.ipc",
-                    "provider test passed",
-                    Some(json!({ "count": infos.len() })),
-                );
-                json!({ "success": true, "count": infos.len() })
+        move || {
+            let registry = store(&app);
+            // The prompt runs outside the lister's lock, so a slow model never holds up the menus.
+            let tested = with_lister(|lister| lister.list(&registry, &id, true, now_ms()))
+                .and_then(|infos| test_prompt(&AppHttp, &registry, &id, &infos, now_ms()).map(|_| infos.len()));
+            match tested {
+                Ok(count) => {
+                    diag(&app).info(
+                        "providers.ipc",
+                        "provider test passed",
+                        Some(json!({ "count": count })),
+                    );
+                    json!({ "success": true, "count": count })
+                }
+                Err(error) => failed(&app, &error),
             }
-            Err(error) => failed(&app, &error),
         },
     )
     .await
