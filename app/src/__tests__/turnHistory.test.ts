@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { ChatSession, Message } from "../types";
+import { engineFailure } from "../ai/engineErrors";
 import {
   classifyTurnError,
   editAt,
@@ -88,6 +89,16 @@ describe("turnHistory", () => {
     expect(history).toHaveLength(4);
     expect(history[1].content).toBe("[This reply failed before any text was written.]");
     expect(history[3].content).toContain("[The user added during this reply: use tabs]");
+  });
+
+  it("knows a refused-as-too-long reply in every language, from the engine or a provider", () => {
+    for (const language of ["en", "fr", "es", "ru"]) {
+      document.documentElement.lang = language;
+      const provider = engineFailure({ kind: "provider-context-too-long", params: { provider: "Acme" } }, { markdown: true });
+      const engine = engineFailure("request exceeds the available context size", { markdown: true });
+      expect([classifyTurnError(provider), classifyTurnError(engine)]).toEqual(["context", "context"]);
+    }
+    document.documentElement.lang = "en";
   });
 
   it("classifies errors and retries only transient ones", () => {

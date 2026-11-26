@@ -20,6 +20,9 @@ export const COMPACT_RESERVE_MAX = 50_000;
 /** A window this size or smaller is never folded automatically: the notes would not leave room to talk. */
 export const NO_COMPACT_WINDOW = 8192;
 
+/** A window that is only a guess has no reserve to keep, so folding starts at this share of it. */
+export const UNKNOWN_WINDOW_SHARE = 0.6;
+
 /** Messages kept verbatim at the end, about three turns. Recency is what "it" and "the second one"
  * refer to, and a summary is the wrong shape for that. */
 export const KEEP_RECENT_MESSAGES = 6;
@@ -36,6 +39,10 @@ const TRANSCRIPT_MESSAGE_LIMIT = 4000;
 
 /** Tokens the summariser may produce. Bounded so a fold cannot run away. */
 const SUMMARY_NUM_PREDICT = 1024;
+
+/** Characters per token when sizing the summary request. Code and non-English text run well under
+ * four, and a request that overflows folds nothing. */
+const SUMMARY_CHARS_PER_TOKEN = 2;
 
 
 export interface CompactionPlan {
@@ -158,22 +165,42 @@ export function planCompaction(
   return { foldFrom, foldThrough };
 }
 
-/** The messages of a fold, for the summariser. Attachments are named but not included: 50 KB of
- * spreadsheet would consume the whole summary. */
-export function renderTranscript(messages: Message[]): string {
-  return messages
-    .map((message) => {
-      const who = message.role === "user" ? "User" : "Assistant";
-      const body = (message.content || "").slice(0, TRANSCRIPT_MESSAGE_LIMIT).trim();
+/** The messages of a fold, for the summariser, attachments named but not included. Past `budget` characters
+ * the longest bodies are cut alike; null when one would keep under `MIN_TRANSCRIPT_BODY`. */
+export function renderTranscript(messages: Message[], budget = Infinity): string | null {
+  const parts = messages.map((message) => {
+    const files = (message.attachments || []).map((attachment) => attachment.name).join(", ");
+    return {
+      head: `${message.role === "user" ? "User" : "Assistant"}: `,
+      body: (message.content || "").slice(0, TRANSCRIPT_MESSAGE_LIMIT).trim(),
+      noted: files ? `\n[attached: ${files}]` : "",
+    };
+  });
 
-      const files = (message.attachments || [])
-        .map((attachment) => attachment.name)
-        .join(", ");
+  const framing = parts.reduce((sum, part) => sum + part.head.length + part.noted.length + EMPTY_BODY.length + 2, 0);
+  const cap = evenCap(parts.map((part) => part.body.length), budget - framing);
+  if (cap < MIN_TRANSCRIPT_BODY) return null;
 
-      const noted = files ? `\n[attached: ${files}]` : "";
-      return `${who}: ${body || "(no text)"}${noted}`;
-    })
+  return parts
+    .map((part) => `${part.head}${part.body.slice(0, cap).trim() || EMPTY_BODY}${part.noted}`)
     .join("\n\n");
+}
+
+const EMPTY_BODY = "(no text)";
+
+/** The least of a message a cut transcript keeps: a sentence or two, enough to say what the turn was. */
+const MIN_TRANSCRIPT_BODY = 200;
+
+/** The longest a body may be for them all to fit in `room`: short ones stay whole, long ones are cut alike. */
+function evenCap(lengths: number[], room: number): number {
+  const sorted = [...lengths].sort((a, b) => a - b);
+  let left = room;
+  for (let index = 0; index < sorted.length; index++) {
+    const share = Math.floor(left / (sorted.length - index));
+    if (sorted[index] > share) return Math.max(0, share);
+    left -= sorted[index];
+  }
+  return Infinity;
 }
 
 const SUMMARY_SYSTEM = `You compress a conversation so it can be carried forward in a smaller space. You are not talking to anyone: you are writing notes that another assistant will rely on as its only record of what came before.
@@ -187,28 +214,33 @@ Drop: pleasantries, restatements, your own reasoning, anything already supersede
 Write plain prose or short dashed lines. No headings, no preamble, no closing remark. Do not address the user. Do not say "the conversation" or "in summary". Start with the first fact.`;
 
 /** Extends a summary rather than rewriting it. A rewrite changes the front of the wire, throwing
- * away the cached prefix on every fold. */
+ * away the cached prefix on every fold. The transcript is cut to fit `windowTokens`; null when it cannot be. */
 export function buildSummaryMessages(
   previous: string | null,
   slice: Message[],
-): { role: "system" | "user"; content: string }[] {
-  const transcript = renderTranscript(slice);
-
-  const instruction = previous
-    ? `Here are notes already written about the earlier part of this conversation:
+  windowTokens = Infinity,
+): { role: "system" | "user"; content: string }[] | null {
+  const instruction = (transcript: string) =>
+    previous
+      ? `Here are notes already written about the earlier part of this conversation:
 
 ${previous}
 
 Below is what happened next. Write ONLY the notes for this new part. Do not repeat, rewrite or refer back to the notes above. What you write will be appended to them.
 
 ${transcript}`
-    : `Write the notes for this conversation.
+      : `Write the notes for this conversation.
 
 ${transcript}`;
 
+  const room =
+    (windowTokens - SUMMARY_NUM_PREDICT) * SUMMARY_CHARS_PER_TOKEN - SUMMARY_SYSTEM.length - instruction("").length;
+  const transcript = renderTranscript(slice, room);
+  if (transcript === null) return null;
+
   return [
     { role: "system", content: SUMMARY_SYSTEM },
-    { role: "user", content: instruction },
+    { role: "user", content: instruction(transcript) },
   ];
 }
 
@@ -270,7 +302,11 @@ async function fold(request: CompactionRequest): Promise<CompactionState | null>
   const slice = messages.slice(plan.foldFrom, plan.foldThrough);
   if (slice.length === 0) return null;
 
-  const summaryMessages = buildSummaryMessages(existing?.summary ?? null, slice);
+  const summaryMessages = buildSummaryMessages(existing?.summary ?? null, slice, request.numCtx);
+  if (!summaryMessages) {
+    logRendererEvent("agent.compaction", "WARN", "fold too big for the window", { numCtx: request.numCtx, messages: slice.length });
+    return null;
+  }
 
   const response = await loggedFetch(chatEndpoint(model), {
     method: "POST",

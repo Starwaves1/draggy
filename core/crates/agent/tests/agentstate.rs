@@ -7,15 +7,16 @@ use std::collections::BTreeMap;
 use draggy_agent::compaction::{
     CHARS_PER_TOKEN, COMPACT_RESERVE_MAX, COMPACT_RESERVE_SHARE, CompactionPlan, CompactionState,
     KEEP_RECENT_MESSAGES, MIN_FOLD_MESSAGES, NO_COMPACT_WINDOW, PlanOptions, SUMMARY_CHAR_BUDGET,
-    append_summary, build_summary_messages, compaction_survives, conversation_chars, folded_tokens,
-    message_chars, plan_compaction, plan_manual_compaction, render_compaction_block,
-    render_transcript, summary_from_response, summary_request_body, trim_summary,
+    UNKNOWN_WINDOW_SHARE, append_summary, build_summary_messages, compaction_survives,
+    conversation_chars, folded_tokens, message_chars, plan_compaction, plan_manual_compaction,
+    render_compaction_block, render_transcript, summary_from_response, summary_request_body,
+    trim_summary,
 };
 use draggy_agent::context_breakdown::{
-    ContextBreakdown, ContextDetails, ContextWindowInput, LoadedSkillName, MIN_COMPACT_LIMIT,
-    PAID_COMPACT_CAP, PromptParts, TokenCount, compact_threshold, context_details,
-    describe_context_window, format_token_count, max_limit_for, measure_breakdown,
-    parse_token_count, tokens_of,
+    CompactSource, CompactThreshold, ContextBreakdown, ContextDetails, ContextWindowInput,
+    LoadedSkillName, MIN_COMPACT_LIMIT, PAID_COMPACT_CAP, PromptParts, TokenCount,
+    compact_threshold, context_details, describe_context_window, fold_budget_chars,
+    format_token_count, max_limit_for, measure_breakdown, parse_token_count, tokens_of,
 };
 use draggy_agent::json::canonical;
 use draggy_agent::live_turn::{LiveTurn, LiveTurns};
@@ -119,6 +120,7 @@ fn compaction(input: &Value) -> Value {
             "COMPACT_RESERVE_SHARE": COMPACT_RESERVE_SHARE,
             "COMPACT_RESERVE_MAX": COMPACT_RESERVE_MAX,
             "NO_COMPACT_WINDOW": NO_COMPACT_WINDOW,
+            "UNKNOWN_WINDOW_SHARE": UNKNOWN_WINDOW_SHARE,
             "KEEP_RECENT_MESSAGES": KEEP_RECENT_MESSAGES,
             "MIN_FOLD_MESSAGES": MIN_FOLD_MESSAGES,
             "SUMMARY_CHAR_BUDGET": SUMMARY_CHAR_BUDGET,
@@ -148,10 +150,14 @@ fn compaction(input: &Value) -> Value {
             &messages_of(&input["messages"]),
             plan_of(&input["plan"])
         )),
-        "renderTranscript" => json!(render_transcript(&messages_of(&input["messages"]))),
+        "renderTranscript" => json!(render_transcript(
+            &messages_of(&input["messages"]),
+            usize_field(input, "budget").unwrap_or(usize::MAX)
+        )),
         "buildSummaryMessages" => to_value(&build_summary_messages(
             input["previous"].as_str(),
             &messages_of(&input["slice"]),
+            input["window"].as_i64(),
         )),
         "appendSummary" => json!(append_summary(
             input["previous"].as_str(),
@@ -173,7 +179,7 @@ fn compaction(input: &Value) -> Value {
             let slice = &messages[plan.fold_from..plan.fold_through];
             summary_request_body(
                 input["model"].as_str().unwrap_or(""),
-                &build_summary_messages(None, slice),
+                &build_summary_messages(None, slice, Some(8192)).unwrap_or_default(),
             )
         }
         "foldResult" => {
@@ -224,6 +230,7 @@ fn context_breakdown(input: &Value) -> Value {
                 draft_tokens: raw["draftTokens"].as_f64().unwrap_or(0.0),
                 exact: raw["exact"].as_bool().unwrap_or(true),
                 window_tokens: raw["windowTokens"].as_i64().unwrap_or(0),
+                window_known: raw["windowKnown"].as_bool().unwrap_or(true),
                 limit_tokens: raw["limitTokens"].as_i64(),
                 paid: raw["paid"].as_bool().unwrap_or(false),
             };
@@ -234,8 +241,17 @@ fn context_breakdown(input: &Value) -> Value {
                 input["window"].as_i64().unwrap_or(0),
                 input["limit"].as_i64(),
                 input["paid"].as_bool().unwrap_or(false),
+                input["windowKnown"].as_bool().unwrap_or(true),
             );
             json!({"tokens": threshold.tokens, "source": source_name(threshold.source)})
+        }
+        "foldBudgetChars" => {
+            let threshold = CompactThreshold {
+                tokens: input["threshold"]["tokens"].as_i64().unwrap_or(0),
+                source: typed::<CompactSource>(&input["threshold"]["source"], "source"),
+            };
+            let measured = optional::<ContextBreakdown>(&input["measured"]);
+            json!(fold_budget_chars(threshold, measured.as_ref()))
         }
         "maxLimitFor" => json!(max_limit_for(input["window"].as_i64().unwrap_or(0))),
         "parseTokenCount" => match parse_token_count(input["raw"].as_str().unwrap_or("")) {

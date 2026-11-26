@@ -19,6 +19,9 @@ pub const COMPACT_RESERVE_MAX: i64 = 50_000;
 /// A window this size or smaller is never folded automatically.
 pub const NO_COMPACT_WINDOW: i64 = 8192;
 
+/// A window that is only a guess has no reserve to keep, so folding starts at this share of it.
+pub const UNKNOWN_WINDOW_SHARE: f64 = 0.6;
+
 /// Messages kept verbatim at the end, about three turns.
 pub const KEEP_RECENT_MESSAGES: usize = 6;
 
@@ -33,6 +36,11 @@ pub const SUMMARY_NUM_PREDICT: u64 = 1024;
 
 /// Per message, in the transcript handed to the summariser.
 const TRANSCRIPT_MESSAGE_LIMIT: usize = 4000;
+
+/// Characters per token when sizing the summary request. Code and non-English text run well under four.
+const SUMMARY_CHARS_PER_TOKEN: i64 = 2;
+
+const EMPTY_BODY: &str = "(no text)";
 
 const SUMMARY_SYSTEM: &str = "You compress a conversation so it can be carried forward in a smaller space. You are not talking to anyone: you are writing notes that another assistant will rely on as its only record of what came before.
 
@@ -202,18 +210,18 @@ pub fn plan_compaction(
     })
 }
 
-/// The messages of a fold, for the summariser. Attachments are named but not included.
-pub fn render_transcript(messages: &[Message]) -> String {
-    messages
+/// The messages of a fold, for the summariser. Attachments are named but not included. Past `budget` UTF-16
+/// units the longest bodies are cut alike; None when that would leave less than `MIN_TRANSCRIPT_BODY` of one.
+pub fn render_transcript(messages: &[Message], budget: usize) -> Option<String> {
+    let parts: Vec<(&str, &str, String)> = messages
         .iter()
         .map(|message| {
             let who = if message.role == "user" {
-                "User"
+                "User: "
             } else {
-                "Assistant"
+                "Assistant: "
             };
             let body = trim_js(utf16_prefix(&message.content, TRANSCRIPT_MESSAGE_LIMIT));
-
             let files = message
                 .attachments
                 .iter()
@@ -221,24 +229,66 @@ pub fn render_transcript(messages: &[Message]) -> String {
                 .map(|attachment| attachment.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-
             let noted = if files.is_empty() {
                 String::new()
             } else {
                 format!("\n[attached: {files}]")
             };
-            let body = if body.is_empty() { "(no text)" } else { body };
-            format!("{who}: {body}{noted}")
+            (who, body, noted)
         })
-        .collect::<Vec<_>>()
-        .join("\n\n")
+        .collect();
+
+    let framing: usize = parts
+        .iter()
+        .map(|(who, _, noted)| who.len() + utf16_len(noted) + EMPTY_BODY.len() + 2)
+        .sum();
+    let room = budget.checked_sub(framing)?;
+    let lengths: Vec<usize> = parts.iter().map(|(_, body, _)| utf16_len(body)).collect();
+    let cap = even_cap(&lengths, room);
+    if cap < MIN_TRANSCRIPT_BODY {
+        return None;
+    }
+
+    Some(
+        parts
+            .iter()
+            .map(|(who, body, noted)| {
+                let body = trim_js(utf16_prefix(body, cap));
+                let body = if body.is_empty() { EMPTY_BODY } else { body };
+                format!("{who}{body}{noted}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    )
 }
 
-/// The request messages for a fold. A previous summary is extended, never rewritten.
-pub fn build_summary_messages(previous: Option<&str>, slice: &[Message]) -> Vec<SummaryMessage> {
-    let transcript = render_transcript(slice);
+/// The least of a message a cut transcript keeps: a sentence or two, enough to say what the turn was.
+const MIN_TRANSCRIPT_BODY: usize = 200;
 
-    let instruction = match previous.filter(|text| !text.is_empty()) {
+/// The longest a body may be for them all to fit in `room`: short ones stay whole, long ones are cut alike.
+fn even_cap(lengths: &[usize], room: usize) -> usize {
+    let mut sorted = lengths.to_vec();
+    sorted.sort_unstable();
+    let mut left = room;
+    for (index, &length) in sorted.iter().enumerate() {
+        let share = left / (sorted.len() - index);
+        if length > share {
+            return share;
+        }
+        left -= length;
+    }
+    usize::MAX
+}
+
+/// The request messages for a fold. A previous summary is extended, never rewritten. The transcript is cut to fit
+/// `window_tokens`; None when it cannot be.
+pub fn build_summary_messages(
+    previous: Option<&str>,
+    slice: &[Message],
+    window_tokens: Option<i64>,
+) -> Option<Vec<SummaryMessage>> {
+    let instruction = |transcript: &str| {
+        match previous.filter(|text| !text.is_empty()) {
         Some(previous) => format!(
             "Here are notes already written about the earlier part of this conversation:
 
@@ -249,18 +299,30 @@ Below is what happened next. Write ONLY the notes for this new part. Do not repe
 {transcript}"
         ),
         None => format!("Write the notes for this conversation.\n\n{transcript}"),
+    }
     };
 
-    vec![
+    let budget = match window_tokens {
+        None => usize::MAX,
+        Some(window) => {
+            let room = (window - SUMMARY_NUM_PREDICT as i64) * SUMMARY_CHARS_PER_TOKEN
+                - utf16_len(SUMMARY_SYSTEM) as i64
+                - utf16_len(&instruction("")) as i64;
+            usize::try_from(room).ok()?
+        }
+    };
+    let transcript = render_transcript(slice, budget)?;
+
+    Some(vec![
         SummaryMessage {
             role: "system",
             content: SUMMARY_SYSTEM.to_string(),
         },
         SummaryMessage {
             role: "user",
-            content: instruction,
+            content: instruction(&transcript),
         },
-    ]
+    ])
 }
 
 /// The chat request that asks for notes. Thinking is off, so a reasoning model writes the notes directly.

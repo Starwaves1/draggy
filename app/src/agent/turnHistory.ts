@@ -177,7 +177,8 @@ export function modelHistory(messages: Message[]): Message[] {
 export function classifyTurnError(text: string): TurnErrorKind {
   if (text.startsWith(BUDGET_ERROR_PREFIX)) return "budget";
   if (/out of memory|failed to allocate|cudaMalloc|OutOfDeviceMemory|OutOfHostMemory/i.test(text)) return "memory";
-  if (/context size|context length|context window|too many tokens|maximum context/i.test(text)) return "context";
+  // The article link names the cause in every language, as the shown message does not.
+  if (/context-too-long|context size|context length|context window|too many tokens|maximum context/i.test(text)) return "context";
   if (/\b429\b|rate.?limit|too many requests|overloaded|\b529\b/i.test(text)) return "rate-limit";
   if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|network|fetch failed|failed to fetch|socket hang up|\b50[234]\b/i.test(text)) return "network";
   if (/engine (stopped|crashed|exited)|server (stopped|crashed|exited)|not running|unreachable|stopped loading/i.test(text)) return "engine";

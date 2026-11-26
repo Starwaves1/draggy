@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compaction::{
     CHARS_PER_TOKEN, COMPACT_RESERVE_MAX, COMPACT_RESERVE_SHARE, NO_COMPACT_WINDOW,
+    UNKNOWN_WINDOW_SHARE,
 };
 use crate::js::{CaseFold, Flags, JsRegex, cached, is_js_space};
 
@@ -156,6 +157,8 @@ pub struct ContextWindowInput {
     pub draft_tokens: f64,
     pub exact: bool,
     pub window_tokens: i64,
+    /// False when nothing reported the window and `window_tokens` is a guess.
+    pub window_known: bool,
     /// The user's own limit, when they set one.
     pub limit_tokens: Option<i64>,
     /// A model a provider bills for, which folds at `PAID_COMPACT_CAP` unless the user set a limit.
@@ -242,17 +245,19 @@ fn fixed_sum(parts: &ContextBreakdown) -> i64 {
     parts.system + parts.tools + parts.memory + parts.skills + parts.loaded_skills + parts.summary
 }
 
-/// The most a limit may be: a tenth of the window is left for the reply.
+/// The most a limit may be: a tenth of the window, at most 50k, is left for the reply. Never below the
+/// automatic fold point.
 pub fn max_limit_for(window_tokens: i64) -> i64 {
-    (window_tokens as f64 * 0.9).floor() as i64
+    window_tokens - COMPACT_RESERVE_MAX.min((window_tokens as f64 * 0.1).floor() as i64)
 }
 
-/// Where automatic folding happens, in tokens. Measured against how far the window can grow, not the smaller
-/// window loaded now.
+/// Where automatic folding happens, in tokens of the whole prompt. Measured against how far the window can
+/// grow, not the smaller window loaded now.
 pub fn compact_threshold(
     window_tokens: i64,
     limit_tokens: Option<i64>,
     paid: bool,
+    window_known: bool,
 ) -> CompactThreshold {
     if let Some(limit) = limit_tokens
         && limit > 0
@@ -263,27 +268,31 @@ pub fn compact_threshold(
         };
     }
 
-    if window_tokens <= NO_COMPACT_WINDOW {
-        return CompactThreshold {
-            tokens: window_tokens,
-            source: CompactSource::None,
-        };
-    }
-
-    let reserve =
-        COMPACT_RESERVE_MAX.min((window_tokens as f64 * COMPACT_RESERVE_SHARE).floor() as i64);
-    let auto = window_tokens - reserve;
-    if paid && auto > PAID_COMPACT_CAP {
-        CompactThreshold {
-            tokens: PAID_COMPACT_CAP,
-            source: CompactSource::Paid,
-        }
+    let auto = if window_known {
+        window_tokens
+            - COMPACT_RESERVE_MAX.min((window_tokens as f64 * COMPACT_RESERVE_SHARE).floor() as i64)
     } else {
-        CompactThreshold {
-            tokens: auto,
-            source: CompactSource::Auto,
-        }
+        (window_tokens as f64 * UNKNOWN_WINDOW_SHARE).floor() as i64
+    };
+    let (tokens, source) = if paid && auto > PAID_COMPACT_CAP {
+        (PAID_COMPACT_CAP, CompactSource::Paid)
+    } else if window_known && window_tokens <= NO_COMPACT_WINDOW {
+        (window_tokens, CompactSource::None)
+    } else {
+        (auto, CompactSource::Auto)
+    };
+    CompactThreshold { tokens, source }
+}
+
+/// Characters the conversation may reach before an automatic fold: the fold point less the fixed parts last
+/// measured, so they never eat the reserve. Zero when nothing folds on its own.
+pub fn fold_budget_chars(threshold: CompactThreshold, measured: Option<&ContextBreakdown>) -> i64 {
+    if threshold.source == CompactSource::None {
+        return 0;
     }
+    // The summary is left out: the conversation's own count already includes it.
+    let fixed = measured.map_or(0, |parts| fixed_sum(parts) - parts.summary);
+    (threshold.tokens - fixed).max(0) * CHARS_PER_TOKEN
 }
 
 /// Builds the window view: each part that has anything in it, the draft on a row of its own, then the free space.
@@ -330,7 +339,7 @@ pub fn describe_context_window(input: &ContextWindowInput) -> ContextWindowView 
         percent: share(free),
     });
 
-    let threshold = compact_threshold(window, input.limit_tokens, input.paid);
+    let threshold = compact_threshold(window, input.limit_tokens, input.paid, input.window_known);
 
     ContextWindowView {
         measured: input.breakdown.is_some(),
@@ -481,7 +490,7 @@ mod tests {
     #[test]
     fn the_limit_is_capped_below_the_window() {
         assert_eq!(
-            compact_threshold(32_000, Some(1_000_000), false).tokens,
+            compact_threshold(32_000, Some(1_000_000), false, true).tokens,
             max_limit_for(32_000)
         );
     }

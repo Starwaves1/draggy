@@ -1,9 +1,6 @@
-import { CONTEXT_BUCKETS, FALLBACK_CONTEXT_LENGTH, contextSizeFor, getModelInfo, growContext, memoryCeilingFor, nextContextSize, windowCeiling } from "../llama";
-
-import { isRemote } from "../ai/providers";
+import { contextSizeFor, foldWindow, getModelInfo, growContext, nextContextSize } from "../llama";
 import { generateId, titleFromContent } from "../utils";
 import {
-  CHARS_PER_TOKEN,
   compactionSurvives,
   foldedTokens,
   planCompaction,
@@ -11,7 +8,7 @@ import {
   runCompaction,
 } from "./compaction";
 import { keepToolResults } from "./contextFit";
-import { compactThreshold } from "./contextBreakdown";
+import { compactThreshold, foldBudgetChars } from "./contextBreakdown";
 import { measureTurn, runAgentTurn } from "./agentLoop";
 import type { AgentHost, ContextMeasurement, OutOfContextInfo } from "./agentLoop";
 import { setLiveTurn } from "./liveTurn";
@@ -289,22 +286,14 @@ export function createTaskManager(initialHost: TaskHost): TaskManager {
   }
 
   /** Characters the conversation may occupy before an automatic fold. The user's limit when there
-   * is one, else a share of how far the window can grow, capped for a paid provider. */
-  async function budgetFor(model: string, numCtx: number): Promise<number> {
+   * is one, else what the window can grow to less its reserve, capped for a paid provider. */
+  async function budgetFor(model: string, numCtx: number, messages: Message[]): Promise<number> {
     const settings = host.getSettings();
-    const limit = settings.compactLimit ?? null;
     const info = await getModelInfo(model).catch(swallowed("chat", "model info is optional", null));
-    const maxLocal = CONTEXT_BUCKETS[CONTEXT_BUCKETS.length - 1];
-    const windowTokens = settings.fixedContextSize === "max"
-      ? (info?.contextLength ?? FALLBACK_CONTEXT_LENGTH)
-      : typeof settings.fixedContextSize === "number"
-      ? settings.fixedContextSize
-      : isRemote(model)
-      ? windowCeiling(info?.contextLength ?? null, numCtx)
-      : Math.min(maxLocal, memoryCeilingFor(model) ?? maxLocal, windowCeiling(info?.contextLength ?? null, numCtx));
-
-    return compactThreshold(windowTokens, limit, info?.cloud === true).tokens * CHARS_PER_TOKEN;
-
+    const reach = foldWindow(model, settings.fixedContextSize, info?.contextLength ?? null, numCtx);
+    const threshold = compactThreshold(reach.tokens, settings.compactLimit ?? null, info?.cloud === true, reach.known);
+    const measured = messages.findLast((message) => message.metrics?.breakdown)?.metrics?.breakdown;
+    return foldBudgetChars(threshold, measured);
   }
 
   /** Folds older conversation into notes, in the idle gap after a turn or now when `manual`. A
@@ -345,7 +334,7 @@ export function createTaskManager(initialHost: TaskHost): TaskManager {
           ? planManualCompaction(session.messages, existing)
           : planCompaction(session.messages, {
               existing,
-              budgetChars: await budgetFor(model, numCtx),
+              budgetChars: await budgetFor(model, numCtx, session.messages),
             });
 
         if (!plan || signal.aborted) return "nothing";
@@ -790,8 +779,8 @@ export function createTaskManager(initialHost: TaskHost): TaskManager {
             // Another chat asked first, so this chat's own queue goes behind it.
             if (!failed && queueOf(chatId).length > 0) waitForTurn(chatId);
           } else if (failed) {
-            // Retry has to see the whole conversation; only a fixed window too small for it is folded first.
-            if (failedKind === "context" && host.getSettings().fixedContextSize != null) void compactChat(chatId, false);
+            // A conversation the window refused is folded as /compact would, whatever the window, so Retry fits.
+            if (failedKind === "context") void compactChat(chatId, true);
           } else if (!dispatchNext(chatId)) {
             void compactChat(chatId, false);
             void wakeForEnded(chatId);

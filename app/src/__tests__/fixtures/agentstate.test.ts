@@ -9,6 +9,7 @@ import {
   COMPACT_RESERVE_MAX,
   COMPACT_RESERVE_SHARE,
   NO_COMPACT_WINDOW,
+  UNKNOWN_WINDOW_SHARE,
   KEEP_RECENT_MESSAGES,
   MIN_FOLD_MESSAGES,
   SUMMARY_CHAR_BUDGET,
@@ -32,13 +33,14 @@ import {
   compactThreshold,
   contextDetails,
   describeContextWindow,
+  foldBudgetChars,
   formatTokenCount,
   maxLimitFor,
   measureBreakdown,
   parseTokenCount,
   tokensOf,
 } from "../../agent/contextBreakdown";
-import type { PromptParts } from "../../agent/contextBreakdown";
+import type { CompactThreshold, ContextBreakdown, PromptParts } from "../../agent/contextBreakdown";
 import { RESUME_BUDGET, buildResumeMessage, describeCompletedWork, joinContinuation } from "../../agent/resume";
 import type { SearchStep } from "../../types";
 import { chooseChannel, looksLikeCall, readRepair, repairPrompt, repairSchema } from "../../agent/toolChannel";
@@ -185,6 +187,7 @@ function compactionCase(input: Json): unknown {
         COMPACT_RESERVE_SHARE,
         COMPACT_RESERVE_MAX,
         NO_COMPACT_WINDOW,
+        UNKNOWN_WINDOW_SHARE,
         KEEP_RECENT_MESSAGES,
         MIN_FOLD_MESSAGES,
         SUMMARY_CHAR_BUDGET,
@@ -205,9 +208,13 @@ function compactionCase(input: Json): unknown {
     case "foldedTokens":
       return foldedTokens(messages, input.plan as CompactionPlan);
     case "renderTranscript":
-      return renderTranscript(messages);
+      return renderTranscript(messages, (input.budget ?? Infinity) as number);
     case "buildSummaryMessages":
-      return buildSummaryMessages((input.previous ?? null) as string | null, input.slice as Message[]);
+      return buildSummaryMessages(
+        (input.previous ?? null) as string | null,
+        input.slice as Message[],
+        (input.window ?? Infinity) as number,
+      );
     case "appendSummary":
       return appendSummary((input.previous ?? null) as string | null, input.addition as string);
     case "trimSummary":
@@ -285,7 +292,10 @@ function contextCase(input: Json): unknown {
         input.window as number,
         (input.limit ?? null) as number | null,
         Boolean(input.paid),
+        input.windowKnown !== false,
       );
+    case "foldBudgetChars":
+      return foldBudgetChars(input.threshold as CompactThreshold, (input.measured ?? null) as ContextBreakdown | null);
     case "maxLimitFor":
       return maxLimitFor(input.window as number);
     case "parseTokenCount": {

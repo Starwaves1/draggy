@@ -13,8 +13,7 @@ use draggy_providers::types::TokenUsage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::compaction::{CHARS_PER_TOKEN, CompactionState, compaction_survives};
-use crate::context_breakdown::compact_threshold;
+use crate::compaction::{CompactionState, compaction_survives};
 use crate::js::utf16_len;
 use crate::live_turn::{LiveTurn, LiveTurns};
 use crate::permissions::Grant;
@@ -968,12 +967,6 @@ impl TaskManager {
         self.waiting = kept;
         delivered
     }
-}
-
-/// The characters, tokens and the window a budget is worked from. A user limit wins; otherwise a share of the window,
-/// capped for a paid provider. The window itself is resolved by the caller.
-pub fn budget_chars(window_tokens: i64, limit_tokens: Option<i64>, paid: bool) -> i64 {
-    compact_threshold(window_tokens, limit_tokens, paid).tokens * CHARS_PER_TOKEN
 }
 
 /// What a measurement was taken for, so a turn sending exactly those messages can start from it.

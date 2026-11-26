@@ -17,6 +17,7 @@ import {
   runCompaction,
   trimSummary,
 } from "../agent/compaction";
+import { REPLY_HEADROOM_TOKENS } from "../llama";
 import type { CompactionState, Message } from "../types";
 
 function say(role: "user" | "assistant", content: string, id = ""): Message {
@@ -162,7 +163,7 @@ describe("planCompaction", () => {
 
 describe("renderTranscript", () => {
   it("labels who said what", () => {
-    const text = renderTranscript([say("user", "ping"), say("assistant", "pong")]);
+    const text = renderTranscript([say("user", "ping"), say("assistant", "pong")])!;
     expect(text).toContain("User: ping");
     expect(text).toContain("Assistant: pong");
   });
@@ -175,13 +176,13 @@ describe("renderTranscript", () => {
           { name: "budget.xlsx", type: "x", content: "SECRET".repeat(1000) },
         ],
       },
-    ]);
+    ])!;
     expect(text).toContain("budget.xlsx");
     expect(text).not.toContain("SECRET");
   });
 
   it("caps a very long message so one turn cannot fill the summariser", () => {
-    const text = renderTranscript([say("user", "z".repeat(50000))]);
+    const text = renderTranscript([say("user", "z".repeat(50000))])!;
     expect(text.length).toBeLessThan(10000);
   });
 
@@ -192,20 +193,42 @@ describe("renderTranscript", () => {
 
 describe("buildSummaryMessages", () => {
   it("asks for notes when there are none yet", () => {
-    const messages = buildSummaryMessages(null, [say("user", "hello")]);
+    const messages = buildSummaryMessages(null, [say("user", "hello")])!;
     expect(messages[0].role).toBe("system");
     expect(messages[1].content).toContain("hello");
   });
 
   it("tells the model to extend the notes rather than rewrite them", () => {
-    const messages = buildSummaryMessages("earlier notes", [say("user", "next")]);
+    const messages = buildSummaryMessages("earlier notes", [say("user", "next")])!;
     expect(messages[1].content).toContain("earlier notes");
     expect(messages[1].content).toMatch(/do not repeat, rewrite or refer back/i);
   });
 
   it("asks for facts rather than narration", () => {
-    const [system] = buildSummaryMessages(null, [say("user", "x")]);
+    const [system] = buildSummaryMessages(null, [say("user", "x")])!;
     expect(system.content).toMatch(/facts, not narration/i);
+  });
+
+  it("fits a fold bigger than the window into it, still naming every message", () => {
+    const slice = [say("user", "keep this short one whole"), ...conversation(40, 4000)];
+    const window = 16_384;
+    const messages = buildSummaryMessages("earlier notes ".repeat(200), slice, window)!;
+    const sent = messages.reduce((sum, message) => sum + message.content.length, 0);
+
+    // The summariser's sizing counts two characters a token.
+    expect(sent).toBeLessThanOrEqual((window - 1024) * 2);
+    expect(messages[1].content.match(/^(User|Assistant): /gm)).toHaveLength(41);
+    expect(messages[1].content).toContain("User: keep this short one whole");
+  });
+
+  it("asks for nothing when the window cannot hold the request at all", () => {
+    expect(buildSummaryMessages(null, conversation(4), 1024)).toBeNull();
+  });
+
+  it("asks for nothing rather than notes from a few words of each message", () => {
+    // 300 long messages in a 16k window would leave each under a sentence; that fold would lose the conversation.
+    expect(buildSummaryMessages(null, conversation(300, 4000), 16_384)).toBeNull();
+    expect(buildSummaryMessages(null, conversation(300, 4000), 400_000)).not.toBeNull();
   });
 });
 
@@ -285,10 +308,10 @@ describe("the constants agree with each other", () => {
     expect(MIN_FOLD_MESSAGES).toBeLessThanOrEqual(KEEP_RECENT_MESSAGES);
   });
 
-  it("leaves free space when folding, and the largest reserve fits in any window that folds", () => {
-    expect(COMPACT_RESERVE_SHARE).toBeGreaterThan(0);
+  it("leaves at least a reply's room free in every window that folds", () => {
     expect(COMPACT_RESERVE_SHARE).toBeLessThan(0.5);
-    expect(COMPACT_RESERVE_MAX).toBeGreaterThan(NO_COMPACT_WINDOW);
+    expect(Math.floor((NO_COMPACT_WINDOW + 1) * COMPACT_RESERVE_SHARE)).toBeGreaterThanOrEqual(REPLY_HEADROOM_TOKENS);
+    expect(COMPACT_RESERVE_MAX).toBeGreaterThanOrEqual(REPLY_HEADROOM_TOKENS);
   });
 });
 
@@ -326,6 +349,23 @@ describe("compaction on native thinking models", () => {
       think: false,
       chat_template_kwargs: { enable_thinking: false },
     });
+  });
+
+  it("sends no more than the loaded window can hold", async () => {
+    let sent = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
+        sent = body.messages.reduce((sum, message) => sum + message.content.length, 0);
+        return new Response(JSON.stringify({ choices: [{ message: { content: "notes" } }] }), { status: 200 });
+      }),
+    );
+    const messages = conversation(40, 4000);
+    await runCompaction({ model: "qwen-model", numCtx: 16_384, messages, plan: { foldFrom: 0, foldThrough: 34 } });
+
+    expect(sent).toBeGreaterThan(0);
+    expect(sent).toBeLessThanOrEqual((16_384 - 1024) * 2);
   });
 
   it("extracts the summary even when wrapped in thinking tags", async () => {

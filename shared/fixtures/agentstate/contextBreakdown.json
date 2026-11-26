@@ -521,6 +521,41 @@
       }
     },
     {
+      "name": "an unknown window's view folds at 60% of the guess",
+      "input": {
+        "op": "describeContextWindow",
+        "input": {
+          "breakdown": null,
+          "draftTokens": 0,
+          "exact": true,
+          "windowTokens": 8192,
+          "windowKnown": false,
+          "limitTokens": null
+        }
+      },
+      "expected": {
+        "measured": false,
+        "exact": true,
+        "usedTokens": 0,
+        "windowTokens": 8192,
+        "percent": 0,
+        "rows": [
+          {
+            "id": "free",
+            "tokens": 8192,
+            "percent": 100
+          }
+        ],
+        "compactAtTokens": 4915,
+        "compactSource": "auto",
+        "details": {
+          "toolCount": null,
+          "skillCount": null,
+          "loadedSkills": []
+        }
+      }
+    },
+    {
       "name": "threshold is a share of the window when left to Draggy",
       "input": {
         "op": "compactThreshold",
@@ -620,7 +655,7 @@
       }
     },
     {
-      "name": "a 8k window never folds automatically",
+      "name": "an 8k window never folds automatically",
       "input": {
         "op": "compactThreshold",
         "window": 8192,
@@ -629,6 +664,58 @@
       "expected": {
         "tokens": 8192,
         "source": "none"
+      }
+    },
+    {
+      "name": "a paid 8k window never folds automatically either",
+      "input": {
+        "op": "compactThreshold",
+        "window": 8192,
+        "limit": null,
+        "paid": true
+      },
+      "expected": {
+        "tokens": 8192,
+        "source": "none"
+      }
+    },
+    {
+      "name": "an unknown window folds at 60% of the guess",
+      "input": {
+        "op": "compactThreshold",
+        "window": 8192,
+        "limit": null,
+        "windowKnown": false
+      },
+      "expected": {
+        "tokens": 4915,
+        "source": "auto"
+      }
+    },
+    {
+      "name": "a paid unknown window folds at 60% of the guess",
+      "input": {
+        "op": "compactThreshold",
+        "window": 8192,
+        "limit": null,
+        "paid": true,
+        "windowKnown": false
+      },
+      "expected": {
+        "tokens": 4915,
+        "source": "auto"
+      }
+    },
+    {
+      "name": "a user limit holds on an 8k window",
+      "input": {
+        "op": "compactThreshold",
+        "window": 8192,
+        "limit": 4000
+      },
+      "expected": {
+        "tokens": 4000,
+        "source": "limit"
       }
     },
     {
@@ -710,6 +797,78 @@
         "window": 32000
       },
       "expected": 28800
+    },
+    {
+      "name": "max limit on a huge window leaves at most 50k for the reply",
+      "input": {
+        "op": "maxLimitFor",
+        "window": 1000000
+      },
+      "expected": 950000
+    },
+    {
+      "name": "fold budget is the fold point less the fixed parts, summary aside",
+      "input": {
+        "op": "foldBudgetChars",
+        "threshold": {
+          "tokens": 12288,
+          "source": "auto"
+        },
+        "measured": {
+          "messages": 9000,
+          "system": 2000,
+          "tools": 1000,
+          "memory": 200,
+          "skills": 100,
+          "loadedSkills": 300,
+          "summary": 700
+        }
+      },
+      "expected": 34752
+    },
+    {
+      "name": "fold budget is the whole fold point before anything was measured",
+      "input": {
+        "op": "foldBudgetChars",
+        "threshold": {
+          "tokens": 12288,
+          "source": "auto"
+        },
+        "measured": null
+      },
+      "expected": 49152
+    },
+    {
+      "name": "fold budget is zero when the window never folds",
+      "input": {
+        "op": "foldBudgetChars",
+        "threshold": {
+          "tokens": 8192,
+          "source": "none"
+        },
+        "measured": null
+      },
+      "expected": 0
+    },
+    {
+      "name": "fold budget is never negative",
+      "input": {
+        "op": "foldBudgetChars",
+        "threshold": {
+          "tokens": 2000,
+          "source": "limit"
+        },
+        "measured": {
+          "messages": 9000,
+          "system": 2000,
+          "tools": 1000,
+          "memory": 200,
+          "skills": 100,
+          "loadedSkills": 300,
+          "summary": 700
+        }
+      },
+      "expected": 0
     },
     {
       "name": "parses plain numbers",

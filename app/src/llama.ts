@@ -349,6 +349,23 @@ function underCeiling(model: string, size: number): number {
   return ceiling ? Math.min(size, ceiling) : size;
 }
 
+/** How far a model's window can grow, which automatic folding is measured against. `known` is false
+ * when no window was reported and `tokens` is the fallback guess. */
+export function foldWindow(
+  model: string,
+  fixedContext: number | "max" | null | undefined,
+  maxContext: number | null,
+  loaded = 0,
+): { tokens: number; known: boolean } {
+  if (typeof fixedContext === "number") return { tokens: fixedContext, known: true };
+  if (fixedContext === "max") return { tokens: maxContext ?? FALLBACK_CONTEXT_LENGTH, known: maxContext !== null };
+  const reach = windowCeiling(maxContext, loaded);
+  if (isRemote(model)) return { tokens: reach, known: maxContext !== null };
+  const ceiling = memoryCeilings.get(model) ?? null;
+  const tokens = Math.min(CONTEXT_BUCKETS[CONTEXT_BUCKETS.length - 1], ceiling ?? Infinity, reach);
+  return { tokens, known: maxContext !== null || (ceiling !== null && ceiling <= reach) };
+}
+
 /** A bigger window would not start: the automatic window stays at `size` from now on. */
 export function limitContextSize(model: string, size: number): void {
   memoryCeilings.set(model, size);

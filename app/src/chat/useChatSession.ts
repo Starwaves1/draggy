@@ -9,14 +9,11 @@ import {
 import { formatVideoRef, videoErrorKey, videoRefOf } from "./videoRef";
 import { startVideoIndex } from "./videoStatus";
 import {
-    CONTEXT_BUCKETS,
-    FALLBACK_CONTEXT_LENGTH,
+    foldWindow,
     getModelInfo,
     needsTextModeTools,
     onModelInfoChange,
-    windowCeiling,
 } from "../llama";
-import { isRemote } from "../ai/providers";
 import type { ContextMeasurement } from "../agent/agentLoop";
 import {
     MIN_COMPACT_LIMIT,
@@ -612,20 +609,13 @@ export function useChatSession({
         name: skills.find((skill) => skill.id === id)?.name ?? id,
     }));
 
+    const reach = foldWindow(model, settings.fixedContextSize, modelInfo?.contextLength ?? null, loadedTokens ?? 0);
     const contextView = describeContextWindow({
         breakdown: contextBreakdown,
         draftTokens,
         exact: exactFigure,
-        windowTokens: settings.fixedContextSize === "max"
-            ? (modelInfo?.contextLength ?? FALLBACK_CONTEXT_LENGTH)
-            : typeof settings.fixedContextSize === "number"
-              ? settings.fixedContextSize
-              : isRemote(model)
-                ? windowCeiling(modelInfo?.contextLength ?? null, loadedTokens ?? 0)
-                : Math.min(
-                    CONTEXT_BUCKETS[CONTEXT_BUCKETS.length - 1],
-                    windowCeiling(modelInfo?.contextLength ?? null, loadedTokens ?? 0),
-                ),
+        windowTokens: reach.tokens,
+        windowKnown: reach.known,
         limitTokens: settings.compactLimit ?? null,
         paid: modelInfo?.cloud === true,
         details: contextDetails(parts, loadedSkillNames),

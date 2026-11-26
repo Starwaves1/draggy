@@ -1,4 +1,4 @@
-import { CHARS_PER_TOKEN, COMPACT_RESERVE_MAX, COMPACT_RESERVE_SHARE, NO_COMPACT_WINDOW } from "./compaction";
+import { CHARS_PER_TOKEN, COMPACT_RESERVE_MAX, COMPACT_RESERVE_SHARE, NO_COMPACT_WINDOW, UNKNOWN_WINDOW_SHARE } from "./compaction";
 
 /** What the context window is spent on. The model reports one number; the parts are measured from
  * what Draggy sent and scaled to add up to it. */
@@ -136,6 +136,8 @@ export interface ContextWindowInput {
   exact: boolean;
   /** The most the model can take, which is also what automatic folding is measured against. */
   windowTokens: number;
+  /** False when nothing reported the window and `windowTokens` is a guess. */
+  windowKnown?: boolean;
   /** The user's own limit, when they set one. */
   limitTokens: number | null;
   /** A model a provider bills for, which folds at `PAID_COMPACT_CAP` unless the user set a limit. */
@@ -145,21 +147,38 @@ export interface ContextWindowInput {
 /** Who chose the fold point: the user, Draggy, a paid provider's cap, or nobody because the window is too small. */
 export type CompactSource = "auto" | "limit" | "paid" | "none";
 
-/** Where automatic folding happens, in tokens. Measured against how far the window can grow, not the
- * smaller window loaded now: that one only grows past a size the fold would already have cut back. */
+export interface CompactThreshold {
+  tokens: number;
+  source: CompactSource;
+}
+
+/** Where automatic folding happens, in tokens of the whole prompt. Measured against how far the window can
+ * grow, not the smaller window loaded now, which only grows past a size the fold would already have cut back. */
 export function compactThreshold(
   windowTokens: number,
   limitTokens: number | null,
   paid = false,
-): { tokens: number; source: CompactSource } {
+  windowKnown = true,
+): CompactThreshold {
   if (limitTokens !== null && limitTokens > 0) {
     return { tokens: Math.min(limitTokens, maxLimitFor(windowTokens)), source: "limit" };
   }
 
-  if (windowTokens <= NO_COMPACT_WINDOW) return { tokens: windowTokens, source: "none" };
+  const auto = windowKnown
+    ? windowTokens - Math.min(COMPACT_RESERVE_MAX, Math.floor(windowTokens * COMPACT_RESERVE_SHARE))
+    : Math.floor(windowTokens * UNKNOWN_WINDOW_SHARE);
+  if (paid && auto > PAID_COMPACT_CAP) return { tokens: PAID_COMPACT_CAP, source: "paid" };
+  if (windowKnown && windowTokens <= NO_COMPACT_WINDOW) return { tokens: windowTokens, source: "none" };
+  return { tokens: auto, source: "auto" };
+}
 
-  const auto = windowTokens - Math.min(COMPACT_RESERVE_MAX, Math.floor(windowTokens * COMPACT_RESERVE_SHARE));
-  return paid && auto > PAID_COMPACT_CAP ? { tokens: PAID_COMPACT_CAP, source: "paid" } : { tokens: auto, source: "auto" };
+/** Characters the conversation may reach before an automatic fold: the fold point less the fixed parts
+ * of the prompt last measured, so they never eat the reserve. Zero when nothing folds on its own. */
+export function foldBudgetChars(threshold: CompactThreshold, measured: ContextBreakdown | null | undefined): number {
+  if (threshold.source === "none") return 0;
+  // The summary is left out: the conversation's own count already includes it.
+  const fixed = measured ? measured.system + measured.tools + measured.memory + measured.skills + measured.loadedSkills : 0;
+  return Math.max(0, threshold.tokens - fixed) * CHARS_PER_TOKEN;
 }
 
 /** Every token sent is billed on every turn, so a paid provider's huge window is folded long before it fills. */
@@ -168,10 +187,10 @@ export const PAID_COMPACT_CAP = 64000;
 /** The lowest limit accepted. Below it every turn would be folded away. */
 export const MIN_COMPACT_LIMIT = 1000;
 
-/** The highest limit worth honouring. Past this the reply itself stops fitting, so a limit above it
- * would only move the wall rather than the fold. */
+/** The highest limit worth honouring: a tenth of the window, at most 50k, stays for the reply. Never
+ * below the automatic fold point, so a limit can always fold later than Draggy would. */
 export function maxLimitFor(windowTokens: number): number {
-  return Math.floor(windowTokens * 0.9);
+  return windowTokens - Math.min(COMPACT_RESERVE_MAX, Math.floor(windowTokens * 0.1));
 }
 
 export function describeContextWindow(input: ContextWindowInput): ContextWindowView {
@@ -205,7 +224,7 @@ export function describeContextWindow(input: ContextWindowInput): ContextWindowV
 
   rows.push({ id: "free", tokens: free, percent: share(free) });
 
-  const threshold = compactThreshold(windowTokens, input.limitTokens, input.paid);
+  const threshold = compactThreshold(windowTokens, input.limitTokens, input.paid, input.windowKnown ?? true);
 
   return {
     measured: input.breakdown !== null,

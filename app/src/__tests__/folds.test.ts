@@ -11,6 +11,7 @@ const turns = vi.hoisted(
       request: AgentRequest;
       host: AgentHost;
       resolve: (result: AgentResult) => void;
+      reject: (error: Error) => void;
     }[],
 );
 
@@ -32,8 +33,8 @@ vi.mock("../slowMode", async (importOriginal) => {
 vi.mock("../agent/agentLoop", () => ({
   KEEP_ALIVE: "30m",
   runAgentTurn: (request: AgentRequest, host: AgentHost) =>
-    new Promise<AgentResult>((resolve) => {
-      turns.push({ request, host, resolve });
+    new Promise<AgentResult>((resolve, reject) => {
+      turns.push({ request, host, resolve, reject });
     }),
 }));
 
@@ -58,17 +59,20 @@ vi.mock("../llama", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../llama")>();
   return {
     ...actual,
-    getModelInfo: async (model: string) =>
-      model.startsWith("@")
-        ? { contextLength: 1_000_000, capabilities: ["tools"], cloud: model.startsWith("@openai/") }
-        : { contextLength: 128_000, capabilities: ["tools"] },
+    getModelInfo: async (model: string) => ({
+      // "unlisted" stands for a provider that does not report the window, "8k" and "16k" for small local models.
+      contextLength: model.includes("unlisted") ? null : model.endsWith(":8k") ? 8192 : model.endsWith(":16k") ? 16_384 : model.startsWith("@") ? 1_000_000 : 128_000,
+      capabilities: ["tools"],
+      cloud: model.startsWith("@openai/"),
+    }),
   };
 });
 
 const { createTaskManager } = await import("../agent/taskManager");
 const { CHARS_PER_TOKEN, conversationChars } = await import("../agent/compaction");
 const { compactThreshold } = await import("../agent/contextBreakdown");
-const { contextSizeFor, forgetContextSize } = await import("../llama");
+const { contextSizeFor, forgetContextSize, limitContextSize } = await import("../llama");
+const { engineFailure } = await import("../ai/engineErrors");
 import type { TaskHost } from "../agent/taskManager";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -281,6 +285,86 @@ describe("the fold that follows a turn", () => {
     await settle();
 
     expect(folding).toHaveLength(0);
+  });
+});
+
+describe("how big the window is", () => {
+  /** How many folds start after one turn of a long conversation. */
+  const foldsAfterTurn = async (model: string, messages = longChat(), settings: Partial<AppSettings> = {}) => {
+    folding.length = 0;
+    turns.length = 0;
+    const { sessions, host } = createHost(settings, model);
+    seed(sessions, messages);
+    const manager = createTaskManager(host);
+    manager.send("chat", "and then?");
+    await settle();
+    turns[0].resolve(finished());
+    await settle();
+    await settle();
+    return folding.length;
+  };
+
+  it("folds a conversation whose window nobody reported before the guessed 8k fills, paid or not", async () => {
+    // 7.2k tokens: past 60% of the guess, still inside it.
+    expect(await foldsAfterTurn("@custom/unlisted", longChat(6, 2400))).toBe(1);
+    expect(await foldsAfterTurn("@openai/unlisted", longChat(6, 2400))).toBe(1);
+  });
+
+  it("never folds a window known to be 8k on its own, unless the user set a limit", async () => {
+    expect(await foldsAfterTurn("small:8k")).toBe(0);
+    expect(await foldsAfterTurn("small:8k", longChat(), { fixedContextSize: 8192 })).toBe(0);
+    expect(await foldsAfterTurn("small:8k", longChat(), { compactLimit: 4000 })).toBe(1);
+  });
+
+  it("never folds a model memory held to 8k on its own, as the meter says", async () => {
+    limitContextSize("qwen3:8b", 8192);
+    expect(await foldsAfterTurn("qwen3:8b")).toBe(0);
+    forgetContextSize("qwen3:8b");
+    expect(await foldsAfterTurn("qwen3:8b")).toBe(1);
+  });
+
+  it("counts the instructions, tools, memory and skills, so the reserve stays free", async () => {
+    // 10.2k tokens of conversation is under a 16k window's 12.3k fold point, but not with 3.5k of fixed parts on top.
+    const messages = longChat(6, 3400);
+    const measured = { messages: 10_200, system: 2_000, tools: 1_000, memory: 200, skills: 100, loadedSkills: 200, summary: 0 };
+    const withParts = messages.map((message, index) =>
+      index === messages.length - 1 ? { ...message, metrics: { breakdown: measured } as Message["metrics"] } : message,
+    );
+
+    expect(await foldsAfterTurn("local:16k", messages)).toBe(0);
+    expect(await foldsAfterTurn("local:16k", withParts)).toBe(1);
+  });
+});
+
+describe("a turn the window refused", () => {
+  /** The plan of the fold that starts after a turn fails with `error`. */
+  const foldAfterFailure = async (model: string, error: string, settings: Partial<AppSettings> = {}) => {
+    folding.length = 0;
+    turns.length = 0;
+    const { sessions, host } = createHost(settings, model);
+    seed(sessions, longChat(3, 400));
+    const manager = createTaskManager(host);
+    manager.send("chat", "and then?");
+    await settle();
+    turns[0].reject(new Error(error));
+    await settle();
+    await settle();
+    return folding[0]?.request.plan ?? null;
+  };
+
+  it("folds everything but the question, as /compact would, so Retry fits", async () => {
+    const tooLong = engineFailure({ kind: "provider-context-too-long", params: { provider: "Acme" } }, { markdown: true });
+    expect(await foldAfterFailure("@openai/gpt-x", tooLong)).toMatchObject({ foldFrom: 0, foldThrough: 6 });
+    expect(await foldAfterFailure("@custom/unlisted", tooLong)).toMatchObject({ foldThrough: 6 });
+  });
+
+  it("folds on an 8k window too, which never folds on its own", async () => {
+    const tooLong = engineFailure("the request exceeds the available context size", { markdown: true });
+    expect(await foldAfterFailure("small:8k", tooLong, { fixedContextSize: 8192 })).toMatchObject({ foldThrough: 6 });
+  });
+
+  it("does not fold for a failure that is not about length", async () => {
+    expect(await foldAfterFailure("@openai/gpt-x", "fetch failed: ECONNREFUSED")).toBeNull();
   });
 });
 

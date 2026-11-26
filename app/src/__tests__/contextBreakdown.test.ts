@@ -5,13 +5,14 @@ import {
   PAID_COMPACT_CAP,
   compactThreshold,
   describeContextWindow,
+  foldBudgetChars,
   formatTokenCount,
   maxLimitFor,
   measureBreakdown,
   parseTokenCount,
 } from "../agent/contextBreakdown";
 import { foldedTokens, planManualCompaction } from "../agent/compaction";
-import { FALLBACK_CONTEXT_LENGTH, pickContextSize, windowCeiling } from "../llama";
+import { FALLBACK_CONTEXT_LENGTH, foldWindow, forgetContextSize, limitContextSize, pickContextSize, windowCeiling } from "../llama";
 import { SLASH_COMMANDS, matchSlashCommands, parseSlashArgument } from "../chat/slashCommands";
 import { settleSession } from "../storage";
 import type { ChatSession, Message } from "../types";
@@ -175,6 +176,31 @@ describe("where the conversation gets folded", () => {
     expect(compactThreshold(400_000, null)).toEqual({ tokens: 350_000, source: "auto" });
   });
 
+  it("still folds a window nobody reported, at the share of the guess Draggy used before the reserve", () => {
+    expect(compactThreshold(FALLBACK_CONTEXT_LENGTH, null, false, false)).toEqual({ tokens: 4_915, source: "auto" });
+    expect(compactThreshold(FALLBACK_CONTEXT_LENGTH, null, true, false)).toEqual({ tokens: 4_915, source: "auto" });
+    expect(compactThreshold(FALLBACK_CONTEXT_LENGTH, null, true)).toEqual({ tokens: 8_192, source: "none" });
+  });
+
+  it("follows a user's limit on an 8k window too", () => {
+    expect(compactThreshold(8_192, 4_000)).toEqual({ tokens: 4_000, source: "limit" });
+  });
+
+  it("leaves the conversation what the instructions, tools, memory and skills do not take", () => {
+    const measured = { messages: 9_000, system: 2_000, tools: 1_000, memory: 200, skills: 100, loadedSkills: 300, summary: 700 };
+    expect(foldBudgetChars(compactThreshold(16_384, null), measured)).toBe((12_288 - 3_600) * 4);
+    expect(foldBudgetChars(compactThreshold(16_384, null), null)).toBe(12_288 * 4);
+    expect(foldBudgetChars(compactThreshold(8_192, null), null)).toBe(0);
+    expect(foldBudgetChars(compactThreshold(16_384, 2_000), measured)).toBe(0);
+  });
+
+  it("lets a limit fold at least as late as Draggy would", () => {
+    for (const window of [16_384, 32_000, 131_072, 262_144, 1_000_000]) {
+      expect(maxLimitFor(window)).toBeGreaterThanOrEqual(compactThreshold(window, null).tokens);
+    }
+    expect(maxLimitFor(1_000_000)).toBe(950_000);
+  });
+
   it("caps a limit that would leave no room for the reply", () => {
     expect(compactThreshold(32_000, 1_000_000).tokens).toBe(maxLimitFor(32_000));
   });
@@ -206,6 +232,23 @@ describe("where the conversation gets folded", () => {
 });
 
 describe("how far a window can grow", () => {
+  it("is what memory allowed, for the meter and the fold alike, once a bigger window would not start", () => {
+    forgetContextSize("held");
+    expect(foldWindow("held", null, 131_072)).toEqual({ tokens: 131_072, known: true });
+    limitContextSize("held", 8_192);
+    expect(foldWindow("held", null, 131_072)).toEqual({ tokens: 8_192, known: true });
+    expect(foldWindow("held", null, null)).toEqual({ tokens: 8_192, known: true });
+    forgetContextSize("held");
+  });
+
+  it("is a guess when no window was reported, and known when the user fixed one", () => {
+    expect(foldWindow("local", null, null)).toEqual({ tokens: FALLBACK_CONTEXT_LENGTH, known: false });
+    expect(foldWindow("@provider/model", null, null, FALLBACK_CONTEXT_LENGTH)).toEqual({ tokens: FALLBACK_CONTEXT_LENGTH, known: false });
+    expect(foldWindow("@provider/model", "max", null)).toEqual({ tokens: FALLBACK_CONTEXT_LENGTH, known: false });
+    expect(foldWindow("@provider/model", 8_192, null)).toEqual({ tokens: 8_192, known: true });
+  });
+
+
   it("is the model's own maximum", () => {
     expect(windowCeiling(203_000, 4096)).toBe(203_000);
   });
