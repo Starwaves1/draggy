@@ -11,8 +11,8 @@ use base64::engine::general_purpose::STANDARD;
 use draggy_providers::catalog::{Catalog, CatalogEntry};
 use draggy_providers::discovery::{Discovery, ports};
 use draggy_providers::http::{HttpClient, HttpRequest, HttpResponse, TransportError};
-use draggy_providers::models::{ListError, ModelLister};
-use draggy_providers::registry::{AddArgs, Keystore, KvStore, Registry};
+use draggy_providers::models::{ListError, ModelLister, Reply, TestError, Tested, test_prompt};
+use draggy_providers::registry::{AddArgs, Keystore, KvStore, Patch, Registry};
 use draggy_providers::remote_catalog::{
     InstanceUse, PUBLIC_KEY, Refresh, RemoteCatalog, STORE, URL_JSON, verified,
 };
@@ -559,4 +559,151 @@ fn a_stored_record_this_build_cannot_read_survives_other_changes() {
     let after = store.0.borrow().get("providers").cloned().expect("stored");
     assert!(after.contains("future-thing"), "{after}");
     assert!(after.contains("openai"), "{after}");
+}
+
+const OPENAI_CHAT: &str = "https://api.openai.com/v1/chat/completions";
+
+/// The registry, listing and chat answer a provider test meets, with `pinned` ticked.
+fn tested(pinned: &[&str], chat: &str) -> (FakeNet, Result<Option<Tested>, TestError>) {
+    let net = openai_net(200, r#"{"data":[{"id":"gpt-a"},{"id":"gpt-b"}]}"#);
+    net.answer(OPENAI_CHAT, 200, chat);
+    let mut registry = openai_registry(&Vault::default());
+    registry
+        .update(
+            "openai",
+            Patch {
+                pinned_models: Some(pinned.iter().map(|id| (*id).to_owned()).collect()),
+                ..Patch::default()
+            },
+        )
+        .expect("the pins are kept");
+    let listed = ModelLister::new(net.clone())
+        .list(&registry, "openai", true, 0)
+        .expect("the listing answers");
+    let result = test_prompt(&net, &registry, "openai", &listed, 0);
+    (net, result)
+}
+
+#[test]
+fn a_test_prompts_the_ticked_model_with_a_small_limit_and_the_provider_key() {
+    let (net, result) = tested(&["gpt-b"], r#"{"choices":[{"message":{"content":"ok"}}]}"#);
+    assert_eq!(
+        result.map(|t| t.map(|t| t.model)),
+        Ok(Some("gpt-b".to_owned()))
+    );
+    let requests = net.requests.borrow();
+    let chat = requests
+        .iter()
+        .find(|r| r.url == OPENAI_CHAT)
+        .expect("a prompt is sent");
+    let body: Value = serde_json::from_str(chat.body.as_deref().unwrap_or_default()).expect("JSON");
+    assert_eq!(body["model"], "gpt-b");
+    let limit = body
+        .get("max_completion_tokens")
+        .or_else(|| body.get("max_tokens"));
+    assert_eq!(limit, Some(&json!(25)));
+    assert_eq!(
+        chat.headers.get("Authorization").map(String::as_str),
+        Some("Bearer sk-test")
+    );
+}
+
+#[test]
+fn a_test_with_nothing_ticked_prompts_the_first_listed_model() {
+    let (_, result) = tested(&[], r#"{"choices":[{"message":{"content":"ok"}}]}"#);
+    assert_eq!(
+        result.map(|t| t.map(|t| t.model)),
+        Ok(Some("gpt-a".to_owned()))
+    );
+}
+
+#[test]
+fn a_reasoning_model_that_only_thought_within_the_limit_passes_showing_its_thinking() {
+    let (_, result) = tested(
+        &[],
+        r#"{"choices":[{"message":{"content":null,"reasoning_content":"The user\nwants"},"finish_reason":"length"}]}"#,
+    );
+    let tested = result.expect("passes").expect("prompted");
+    assert_eq!(tested.model, "gpt-a");
+    assert_eq!(tested.reply, Reply::Thinking("The user wants".to_owned()));
+}
+
+/// The reply the test shows for a chat answer `message`.
+fn reply_to(message: &str) -> Reply {
+    let chat = format!(r#"{{"choices":[{{"message":{message}}}]}}"#);
+    tested(&[], &chat)
+        .1
+        .expect("passes")
+        .expect("prompted")
+        .reply
+}
+
+#[test]
+fn a_test_shows_the_reply_on_one_line_over_any_thinking() {
+    let reply =
+        reply_to(r#"{"content":"  Hello!\n\n  How can I\thelp? ","reasoning_content":"hmm"}"#);
+    assert_eq!(reply, Reply::Text("Hello! How can I help?".to_owned()));
+}
+
+#[test]
+fn a_test_names_the_tool_a_model_called_instead_of_writing() {
+    let reply = reply_to(
+        r#"{"content":null,"reasoning_content":"use a tool","tool_calls":[{"id":"c1","type":"function","function":{"name":"get_time","arguments":"{}"}}]}"#,
+    );
+    assert_eq!(reply, Reply::Tool("get_time".to_owned()));
+}
+
+#[test]
+fn a_test_cuts_a_reply_from_a_server_that_ignores_the_limit() {
+    let long = "word ".repeat(100);
+    let Reply::Text(text) = reply_to(&format!(r#"{{"content":"{long}"}}"#)) else {
+        panic!("a text reply");
+    };
+    assert_eq!(text.chars().count(), 200);
+    assert!(text.ends_with('…'), "{text}");
+}
+
+#[test]
+fn a_tests_reply_reaches_the_renderer_as_kind_and_text() {
+    let reply = Reply::Thinking("hmm".to_owned());
+    assert_eq!(
+        serde_json::to_value(reply).expect("JSON"),
+        json!({ "kind": "thinking", "text": "hmm" })
+    );
+}
+
+#[test]
+fn a_test_fails_naming_the_model_that_sent_back_nothing() {
+    let (_, result) = tested(&[], r#"{"choices":[{"message":{"content":"  "}}]}"#);
+    assert_eq!(result, Err(TestError::NoReply("gpt-a".to_owned())));
+}
+
+#[test]
+fn a_test_fails_when_the_provider_lists_no_models() {
+    let net = openai_net(200, r#"{"data":[]}"#);
+    let registry = openai_registry(&Vault::default());
+    let listed = ModelLister::new(net.clone())
+        .list(&registry, "openai", true, 0)
+        .expect("the listing answers");
+    let result = test_prompt(&net, &registry, "openai", &listed, 0);
+    assert_eq!(result, Err(TestError::NoModels));
+    assert!(net.requests.borrow().iter().all(|r| r.url != OPENAI_CHAT));
+}
+
+#[test]
+fn a_test_fails_with_the_providers_refusal_of_the_prompt() {
+    let net = openai_net(200, r#"{"data":[{"id":"gpt-a"}]}"#);
+    net.answer(
+        OPENAI_CHAT,
+        404,
+        r#"{"error":{"message":"The model `gpt-a` does not exist"}}"#,
+    );
+    let registry = openai_registry(&Vault::default());
+    let listed = ModelLister::new(net.clone())
+        .list(&registry, "openai", true, 0)
+        .expect("the listing answers");
+    let result = test_prompt(&net, &registry, "openai", &listed, 0);
+    assert!(
+        matches!(result, Err(TestError::Failed(ListError::Failure(f))) if f.kind == ErrorKind::ModelNotFound)
+    );
 }
