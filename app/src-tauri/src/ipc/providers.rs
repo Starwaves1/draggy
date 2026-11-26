@@ -13,7 +13,7 @@ use draggy_diagnostics::Diagnostics;
 use draggy_providers::autopin::plan_pins;
 use draggy_providers::catalog::{Catalog, CatalogEntry};
 use draggy_providers::discovery::Discovery;
-use draggy_providers::models::{ListError, ModelLister, test_prompt};
+use draggy_providers::models::{ListError, ModelLister, TestError, test_prompt};
 use draggy_providers::registry::{AddArgs, Keystore, Patch, Registry as Providers, RegistryError};
 use draggy_providers::remote_catalog::{InstanceUse, PUBLIC_KEY, Refresh, RemoteCatalog};
 use serde_json::{Value, json};
@@ -152,20 +152,30 @@ async fn test(app: AppHandle, args: Vec<Value>) -> Result<Value, IpcError> {
     blocking(move || {
         let registry = store(&app);
         // The prompt runs outside the lister's lock, so a slow model never holds up the menus.
-        let tested =
-            with_lister(|lister| lister.list(&registry, &id, true, now_ms())).and_then(|infos| {
-                test_prompt(&AppHttp, &registry, &id, &infos, now_ms()).map(|_| infos.len())
-            });
-        match tested {
-            Ok(count) => {
+        let infos = match with_lister(|lister| lister.list(&registry, &id, true, now_ms())) {
+            Ok(infos) => infos,
+            Err(error) => return failed(&app, &error),
+        };
+        let started = Instant::now();
+        match test_prompt(&AppHttp, &registry, &id, &infos, now_ms()) {
+            Ok(model) => {
+                let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
                 diag(&app).info(
                     "providers.ipc",
                     "provider test passed",
-                    Some(json!({ "count": count })),
+                    Some(json!({ "count": infos.len(), "ms": ms })),
                 );
-                json!({ "success": true, "count": count })
+                json!({ "success": true, "count": infos.len(), "model": model, "ms": ms })
             }
-            Err(error) => failed(&app, &error),
+            Err(TestError::Failed(error)) => failed(&app, &error),
+            Err(TestError::NoModels) => {
+                log_failure(&app, "no-models");
+                json!({ "success": false, "error": { "kind": "no-models" } })
+            }
+            Err(TestError::NoReply(model)) => {
+                log_failure(&app, "no-reply");
+                json!({ "success": false, "error": { "kind": "no-reply", "model": model } })
+            }
         }
     })
     .await

@@ -37,7 +37,7 @@ function stubMain({ instances = [] as ProviderInstance[], catalog = [entry("open
       return { success: true, instance: find(id) };
     }),
     remove: vi.fn(async () => ({ success: true })),
-    test: vi.fn(async () => ({ success: true, count: 0 })),
+    test: vi.fn(async () => ({ success: true, count: 0, model: null, ms: 0 })),
     models: vi.fn(async (id: string) => ({
       success: true,
       models: ["m-1", "m-2"].map((model) => ({ id: model, ref: `@${id}/${model}`, capabilities: ["completion"], cloud: false, pinned: find(id).pinnedModels.includes(model), override: null })),
@@ -197,5 +197,40 @@ describe("the Providers page", () => {
     stubMain({ catalog: [entry("openai", { available: false }), entry("ollama", { kind: "local", needsKey: false })] });
     page();
     expect(await screen.findByText(en("noKeystoreProviders"))).toBeTruthy();
+  });
+
+  describe("Test", () => {
+    const tested = async (answer: unknown) => {
+      const api = stubMain({ instances: [instance("openai", { hasKey: true, keyHint: "1234", enabled: true })] });
+      api.test.mockResolvedValue(answer as never);
+      page();
+      await expand("openai");
+      fireEvent.click(screen.getByRole("button", { name: en("testConnection") }));
+      await waitFor(() => expect(api.test).toHaveBeenCalledWith("openai"));
+    };
+
+    it("names the model that replied and how long it took", async () => {
+      await tested({ success: true, count: 2, model: "m-2", ms: 1340 });
+      expect(await screen.findByText("Connected. m-2 replied in 1.3 s.")).toBeTruthy();
+    });
+
+    it("says which model sent back an empty reply", async () => {
+      await tested({ success: false, error: { kind: "no-reply", model: "m-1" } });
+      expect(await screen.findByText("m-1 sent back an empty reply.")).toBeTruthy();
+    });
+
+    it("says a provider that lists nothing lists no models", async () => {
+      await tested({ success: false, error: { kind: "no-models" } });
+      expect(await screen.findByText(en("noModelsListed"))).toBeTruthy();
+    });
+
+    it("gives the cause in one line, with the article as a link rather than an address", async () => {
+      await tested({ success: false, error: { kind: "provider-unreachable", status: 0, message: "error sending request for url" } });
+      expect(await screen.findByText(en("providerUnreachable").replace("{provider}", "openai"))).toBeTruthy();
+      const link = screen.getByRole("link", { name: en("engineErrorLink") });
+      expect(link.getAttribute("href")).toBe("https://draggy.org/error/provider-unreachable");
+      expect(document.body.textContent).not.toContain("https://");
+      expect(document.body.textContent).not.toContain("error sending request");
+    });
   });
 });

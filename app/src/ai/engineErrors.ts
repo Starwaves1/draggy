@@ -90,9 +90,8 @@ function known(text: string) {
   return BY_TEXT.find(({ pattern }) => pattern.test(text)) ?? null;
 }
 
-/** What to show for a failure of the engine, in the reader's language with a link to the article on it. */
-export function engineFailure(source: string | EngineResult | null | undefined, options: Options = {}): string {
-  const language = languageNow();
+/** A failure in the reader's language, and the slug of the article on it. */
+function explain(source: string | EngineResult | null | undefined, language: string): { message: string; slug: string } {
   const result: EngineResult = typeof source === "string" ? { error: source } : (source ?? {});
   const text = String(result.error ?? "").trim();
   const params = result.params ?? {};
@@ -104,7 +103,7 @@ export function engineFailure(source: string | EngineResult | null | undefined, 
     // A crash whose last words are a known cause is that cause, not the generic crash.
     if (result.kind === "stopped-loading") {
       const cause = known(`${params.log ?? ""}\n${params.reason ?? ""}`);
-      if (cause) return withArticle(say(language, cause.key), cause.slug, language, options);
+      if (cause) return { message: say(language, cause.key), slug: cause.slug };
     }
 
     const detail = params.reason ? `: ${params.reason}` : "";
@@ -112,16 +111,30 @@ export function engineFailure(source: string | EngineResult | null | undefined, 
     const provider = params.provider || say(language, "providerFallbackName");
     const time = result.kind === "account-limit-reached" ? resetTime(language, params.resetsAt) : null;
     if (time) key = "accountLimitReachedUntil";
-    return withArticle(say(language, key, { ...params, detail, provider, text, time: time ?? "" }), slug, language, options);
+    return { message: say(language, key, { ...params, detail, provider, text, time: time ?? "" }), slug };
   }
 
-  if (!text) return withArticle(say(language, "engineWouldNotStart"), "engine-would-not-start", language, options);
+  if (!text) return { message: say(language, "engineWouldNotStart"), slug: "engine-would-not-start" };
 
   const match = known(text);
-  if (match) return withArticle(say(language, match.key), match.slug, language, options);
+  if (match) return { message: say(language, match.key), slug: match.slug };
 
   // Unrecognised: the engine's own words stay, since hiding them leaves nothing to search for.
-  return withArticle(say(language, "engineUnknownProblem", { text }), "unknown-engine-error", language, options);
+  return { message: say(language, "engineUnknownProblem", { text }), slug: "unknown-engine-error" };
+}
+
+/** What to show for a failure of the engine, in the reader's language with a link to the article on it. */
+export function engineFailure(source: string | EngineResult | null | undefined, options: Options = {}): string {
+  const language = languageNow();
+  const { message, slug } = explain(source, language);
+  return withArticle(message, slug, language, options);
+}
+
+/** The same failure with its article apart, for a line that shows the link as a link. */
+export function engineFailureParts(source: string | EngineResult | null | undefined): { message: string; url: string } {
+  const language = languageNow();
+  const { message, slug } = explain(source, language);
+  return { message, url: articleUrl(slug, language) };
 }
 
 /** Image engine failures by code: the message key, and the article on it where the site has one. */

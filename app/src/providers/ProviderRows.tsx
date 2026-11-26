@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../ui/icons/Icon";
 import { Badge, Button, ConfirmDialog, Segmented, Toggle } from "../settings/Controls";
-import { engineFailure } from "../ai/engineErrors";
+import { engineFailure, engineFailureParts } from "../ai/engineErrors";
 import { failureOf } from "../ai/llamaStream";
 import { fill } from "../onboarding/text";
+import { formatDuration } from "../stats/summary";
 import { VENDOR_NAMES } from "./vendors";
 import { ProviderIcon } from "./ProviderIcon";
 import Logo from "../Logo";
@@ -22,6 +23,45 @@ import type {
 import { swallowed } from "../logger";
 
 type Translate = (key: string) => string;
+
+/** A line under Test: what happened, and on a failure the article on it. */
+type Note = { text: string; failed: boolean; url?: string };
+
+type TestAnswer = Awaited<ReturnType<NonNullable<Window["draggy"]>["providers"]["test"]>>;
+
+/** Who answered and how fast, or the cause of the failure in plain words. */
+function testNote(answer: TestAnswer, provider: string, t: Translate): Note {
+  if (answer.success) {
+    const text = answer.model
+      ? fill(t("testReplied"), { model: answer.model, time: formatDuration(answer.ms) })
+      : fill(t("testPassed"), { count: String(answer.count) });
+    return { text, failed: false };
+  }
+  if (answer.error.kind === "no-models") return { text: t("noModelsListed"), failed: true };
+  if (answer.error.kind === "no-reply") return { text: fill(t("testNoReply"), { model: answer.error.model ?? "" }), failed: true };
+  return failureNote(answer.error, provider);
+}
+
+function failureNote(failure: ProviderFailure, provider: string): Note {
+  const { message, url } = engineFailureParts(failureOf({ ...failure, provider }));
+  return { text: message, failed: true, url };
+}
+
+function NoteLine({ note, t }: { note: Note; t: Translate }) {
+  return (
+    <p className={`text-xs font-medium break-words min-w-0 ${note.failed ? "text-danger" : "text-text-secondary"}`}>
+      {note.text}
+      {note.url && (
+        <>
+          {" "}
+          <a href={note.url} target="_blank" rel="noreferrer" className="underline hover:text-text-primary transition-colors">
+            {t("engineErrorLink")}
+          </a>
+        </>
+      )}
+    </p>
+  );
+}
 
 const CAPABILITIES: { flag: ProviderCapability; label: string }[] = [
   { flag: "tools", label: "capabilityTools" },
@@ -137,7 +177,7 @@ export function InstanceRow({
   const [open, setOpen] = useState(initiallyOpen);
   const [models, setModels] = useState<ProviderModel[] | null>(null);
   const [failure, setFailure] = useState<ProviderFailure | null>(null);
-  const [message, setMessage] = useState("");
+  const [note, setNote] = useState<Note | null>(null);
 
   const listModels = useCallback(
     async (refresh = false) => {
@@ -166,7 +206,7 @@ export function InstanceRow({
     local && running === false ? t("serverNotRunning") : models ? fill(t("pinnedOfModels"), { pinned: String(pinned), count: String(models.length) }) : null,
   ].filter(Boolean);
 
-  const saved = (result: { ok: boolean }) => setMessage(result.ok ? "" : t("providerChangeFailed"));
+  const saved = (result: { ok: boolean }) => setNote(result.ok ? null : { text: t("providerChangeFailed"), failed: true });
 
   return (
     <div>
@@ -199,28 +239,22 @@ export function InstanceRow({
           <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={() => {
-                setMessage("");
+                setNote(null);
                 void window.draggy?.providers
                   ?.test(instance.id)
                   .then((answer) => {
-                    if (answer.success) {
-                      setMessage(fill(t("testPassed"), { count: String(answer.count) }));
-                      void listModels();
-                    } else {
-                      setMessage(engineFailure(failureOf({ ...answer.error, provider: instance.label })));
-                    }
+                    setNote(testNote(answer, instance.label, t));
+                    if (answer.success) void listModels();
                   })
                   .catch(swallowed("providers", "best effort, the screen works without it"));
               }}
             >
               {t("testConnection")}
             </Button>
-            {message && <p className="text-xs font-medium text-text-secondary break-words min-w-0">{message}</p>}
+            {note && <NoteLine note={note} t={t} />}
           </div>
 
-          {failure && !message && (
-            <p className="text-xs font-medium text-danger">{engineFailure(failureOf({ ...failure, provider: instance.label }))}</p>
-          )}
+          {failure && !note && <NoteLine note={failureNote(failure, instance.label)} t={t} />}
 
           <ModelList instance={instance} models={models} providers={providers} t={t} />
 

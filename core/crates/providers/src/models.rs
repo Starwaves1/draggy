@@ -25,7 +25,8 @@ const FAILURE_MS: u64 = 60_000;
 const TIMEOUT_MS: u64 = 15_000;
 /// A test's prompt waits longer than a listing: a local server may load the model first.
 const TEST_TIMEOUT_MS: u64 = 60_000;
-const TEST_PROMPT: &str = "Reply with one word: ok";
+/// A greeting, not an instruction: a reasoning model spends fewer tokens deciding how to answer it.
+const TEST_PROMPT: &str = "Hi";
 const TEST_MAX_TOKENS: i64 = 25;
 /// Ollama is asked about this many models at most; the rest stay unknown.
 const MAX_SHOWN: usize = 50;
@@ -47,6 +48,20 @@ impl std::fmt::Display for ListError {
 }
 
 impl std::error::Error for ListError {}
+
+/// A provider test that failed: its listing or prompt did, it lists nothing, or its model answered with nothing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TestError {
+    Failed(ListError),
+    NoModels,
+    NoReply(String),
+}
+
+impl From<ListError> for TestError {
+    fn from(error: ListError) -> Self {
+        TestError::Failed(error)
+    }
+}
 
 /// A model as the renderer sees it: its reference, window, capabilities and whether a pin ticks it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -331,7 +346,7 @@ pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
     instance_id: &str,
     listed: &[ModelInfo],
     now: u64,
-) -> Result<Option<String>, ListError> {
+) -> Result<Option<String>, TestError> {
     let conn = registry
         .connection_for(instance_id)
         .ok_or_else(|| ListError::Other(format!("No provider {instance_id}")))?;
@@ -349,7 +364,7 @@ pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
         .find(|id| listed.iter().any(|info| &info.id == *id))
         .or_else(|| listed.first().map(|info| &info.id))
         .cloned()
-        .ok_or_else(|| no_answer(ErrorKind::ModelNotFound, "The provider lists no models."))?;
+        .ok_or(TestError::NoModels)?;
     let chat = ChatRequest {
         messages: vec![ChatMessage {
             role: "user".to_owned(),
@@ -384,23 +399,10 @@ pub fn test_prompt<H: HttpClient, R: ConnectionSource>(
         || !answer.reasoning.trim().is_empty()
         || !answer.tool_calls.is_empty();
     if !answered {
-        return Err(no_answer(
-            ErrorKind::UnknownError,
-            "The model sent back no text.",
-        ));
+        return Err(TestError::NoReply(model));
     }
     info!(target: "providers.models", instance_id, "test prompt answered");
     Ok(Some(model))
-}
-
-fn no_answer(kind: ErrorKind, message: &str) -> ListError {
-    ListError::Failure(ProviderError {
-        kind,
-        status: None,
-        message: Some(message.to_owned()),
-        provider_message: None,
-        retry_after: None,
-    })
 }
 
 /// A model from LM Studio's own listing: its window, and the capabilities its type and tags name.

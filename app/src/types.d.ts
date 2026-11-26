@@ -1268,6 +1268,8 @@ export interface ProviderFailure {
   message?: string;
   providerMessage?: string;
   retryAfter?: number;
+  /** The model a provider test prompted, when it sent back nothing. */
+  model?: string;
 }
 
 export type ProviderCapability = "tools" | "vision" | "thinking";
@@ -2178,7 +2180,8 @@ declare global {
         remove: (id: string) => Promise<ProviderResult<object>>;
         /** Write-only: an empty key removes it and switches the provider off. */
         setKey: (id: string, apiKey: string) => Promise<ProviderResult<{ instance: ProviderInstance }>>;
-        test: (id: string) => Promise<ProviderResult<{ count: number }>>;
+        /** Lists the models, then prompts one; `model` is null for an account, which its listing proves. */
+        test: (id: string) => Promise<ProviderResult<{ count: number; model: string | null; ms: number }>>;
         models: (id: string, options?: { refresh?: boolean }) => Promise<ProviderResult<{ models: ProviderModel[] }>>;
         /** Loopback only; run when the Providers page opens or on Scan, never in the background. */
         scan: () => Promise<ProviderResult<{ servers: DiscoveredServer[] }>>;
